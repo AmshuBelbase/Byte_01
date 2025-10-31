@@ -4,13 +4,24 @@ import math
 import visualization_functions as visualize
 
 # Define the inverse kinematics parameters
-x, y, z = 9.094, 35, 0 # Target point
 
 # Link lengths in cm
 L1 = 5.995  # Link 1 length
 linkConst = 9.094  # Constant link between L1 and L2 (RADIUS OF CIRCLE WHEN L1 IS ROTATED ALONG Z AXIS)
 L2 = 22  # Link 2 length
 L3 = 21.5  # Link 3 length
+
+
+# xh, yh, zh = -9.094, -43.5, L1 # Home position (doubled for better visibility)
+
+# xc, yc, zc = 9.094, 43.5, L1 # Target point
+
+# x,y,z = xc-xh, yc-yh, zc-zh # Shifted target point
+
+x, y, z = 9.094, 27, 6 # Target point
+
+
+print(x, y, z)
 
 home_linkConst = (linkConst, 0, L1)
 
@@ -82,9 +93,9 @@ theta1, theta2, theta3 = inverse_kinematics(x, y, z, L1, linkConst, L2, L3)
 print(math.degrees(theta1), math.degrees(theta2), math.degrees(theta3)) 
 
 # theta1, theta2, theta3 = np.radians(282), np.radians(-5), np.radians(-5)
+# theta1, theta2, theta3 = 0,0,0
 
 
-
-# visualize._3dof(L1, linkConst, L2, L3, theta1, theta2, theta3)
+visualize._3dof(L1, linkConst, L2, L3, theta1, theta2, theta3)
 
     
