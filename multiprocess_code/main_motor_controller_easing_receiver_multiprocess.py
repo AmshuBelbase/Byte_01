@@ -175,7 +175,7 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
         dest_deg = np.zeros(num_motors)
         movestarttime = None
         
-        loop = SoftRealtimeLoop(dt=0.02, report=True, fade=0)  # 50Hz
+        loop = SoftRealtimeLoop(dt=0.1, report=True, fade=0)  # 50Hz
       
         with loop:
             for t in loop: 
@@ -250,16 +250,21 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
 
                             targets_vel_rad[i] = np.radians((scurve01_derivative(elapsed / Ti) * (dest_deg[i] - src_deg[i]) / Ti))
 
-                            print(f"t = {t:.1f} Motor {motor_id}: s={s:.3f}, target={targets_deg[i]:.2f}°")
+                            
                         
-                        if abs(current_positions_deg[i] - dest_deg[i]) > 0.2:  # 0.2° tolerance
-                            all_finished = False
+                        
 
                         targets_rad[i] = np.radians(targets_deg[i]) 
 
-                        motors[motor_id].send_mit_command(
+                        motor = motors[motor_id]
+                        motor.send_mit_command(
                             position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP, kd=KD, torque=0.0
                         )
+
+                        print(f"SENT t = {t:.1f} Motor {motor_id}: target={targets_deg[i]:.2f}°")
+
+                        if abs(current_positions_deg[i] - dest_deg[i]) > 0.2:  # 0.2° tolerance
+                            all_finished = False
                                         
                     # Status every 1s
                     if t % 1.0 < 0.02: 
@@ -323,7 +328,7 @@ if __name__ == '__main__':
     except RuntimeError:
         pass  # Already set, that's fine
 
-    motor_ids = [2]
+    motor_ids = [1,2,3]
     can_interface = 'can0'
     
     print("="*70)
