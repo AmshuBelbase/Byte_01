@@ -144,8 +144,8 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
         time.sleep(0.5)
         
         # Control parameters
-        KP = 300.0
-        KD = 1
+        KP = 50.0
+        KD = 2
         print(f"Control gains: KP={KP}, KD={KD}")
 
         for motor_id, motor in motors.items():
@@ -154,12 +154,11 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
         
         print("Waiting 3 seconds...")
         time.sleep(3)
-        
 
         
         # S-curve timing parameters
         BASEANGLE = 360.0
-        BASETIME = 12.0
+        BASETIME = 4.0
         MINTIME = 0.08
         SMALLANGLETHRESH = 5.0
         
@@ -259,7 +258,7 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                         targets_rad[i] = np.radians(targets_deg[i]) 
 
                         motors[motor_id].send_mit_command(
-                            position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP, kd=KD, torque=3.0
+                            position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP, kd=KD, torque=0.0
                         )
                                         
                     # Status every 1s
@@ -286,7 +285,7 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                 # Default hold if no move
                 elif not move_active:
                     for i, motor_id in enumerate(motor_ids):
-                        if t % 1.0 < 0.02: 
+                        if t % 5.0 < 0.02: 
                             print("Hold at: ", current_dest_deg[i])
                         
                         motors[motor_id].send_mit_command(
