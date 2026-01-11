@@ -80,15 +80,20 @@ if __name__ == '__main__':
     
     # Predefined destinations
     destinations = {
-        '1': np.array([10.0, 40.0, 60.0]),
-        '2': np.array([30.0, 50.0, 0.0]),
-        '3': np.array([0.0, 0.0, 0.0]),
+        '1': np.array([0.0]),
+        '2': np.array([40.0]),
+        '3': np.array([60.0]),
+        '4': np.array([-40.0]),
+        '5': np.array([-60.0]),
+        '6': np.array([0.0]),
     }
     
     print("\n📋 Available commands:")
-    print("  1 - Move to [10°, 40°, 60°]")
-    print("  2 - Move to [30°, 50°, 0°]")
-    print("  3 - Move to [0°, 0°, 0°] (home)")
+    print("  1 - Move to [0°, 0°, 0°] (home)")
+    print("  2 - Move to [40°, 20°, 30°]")
+    print("  3 - Move to [60°, 30°, 40°]")
+    print("  4 - Move to [-40°, -20°, -30°]")
+    print("  5 - Move to [-60°, -30°, -40°]")
     print("  q - Quit")
     print()
     
