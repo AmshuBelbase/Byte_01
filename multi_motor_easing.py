@@ -103,21 +103,21 @@ def position_step_test(motor_ids=[1, 2], can_interface='can0'):
         time.sleep(3)
        
         # Impedance gains
-        KP = 150.0
-        KD = 2.5
+        KP = 300.0
+        KD = 1
        
         print(f"Control gains: KP={KP}, KD={KD}")
         print("\n=== STARTING POSITION TEST (S-curve) ===")
         print("Press Ctrl+C to stop\n")
        
         # Desired angles per motor (deg)
-        src  = np.array([0.0, 0.0, 0.0])
-        dest = np.array([10.0, 40.0, 60.0])
+        src  = np.array([0.0])
+        dest = np.array([40.0])
 
         # === S-curve timing parameters ===
         BASE_ANGLE = 360.0       # Reference angle for 1 second
-        BASE_TIME  = 1.0        # Seconds for BASE_ANGLE
-        MIN_TIME   = 0.08       # Minimum move time for very small angles
+        BASE_TIME  = 5.0        # Seconds for BASE_ANGLE
+        MIN_TIME   = 0.2       # Minimum move time for very small angles
         SMALL_ANGLE_THRESH = 5.0  # Below this, treat as "small angle"
 
         # Pre-compute move times per motor
@@ -222,7 +222,7 @@ def position_step_test(motor_ids=[1, 2], can_interface='can0'):
                 # Swap direction: src->dest then dest->src
                 direction *= -1
                 move_start_time = None
-                time.sleep(1.0)  # pause between cycles
+                time.sleep(5)  # pause between cycles
 
     except KeyboardInterrupt:
         print("\n\nTest interrupted by user")
@@ -251,7 +251,7 @@ def position_step_test(motor_ids=[1, 2], can_interface='can0'):
 
 
 if __name__ == '__main__':
-    MOTOR_IDS = [1, 2, 3]
+    MOTOR_IDS = [2]
     CAN_INTERFACE = 'can0'
    
     print("="*70)

@@ -21,6 +21,16 @@ def scurve01(s):
     return 3.0*s*s - 2.0*s*s*s
 
 
+def scurve01_derivative(s):
+    """
+    Derivative of S-curve: velocity profile
+    For scurve01(s) = 3s² - 2s³
+    Derivative: d/ds = 6s - 6s²
+    """
+    s = max(0.0, min(1.0, s))
+    return 6.0*s - 6.0*s*s
+
+
 class SoftRealtimeLoop:
     def __init__(self, dt=0.01, report=True, fade=0):
         self.dt = dt
@@ -50,7 +60,8 @@ class SoftRealtimeLoop:
         targettime = (self.iteration + 1) * self.dt
         sleeptime = targettime - currenttime
         if sleeptime > 0:
-            time.sleep(sleeptime)
+            # time.sleep(sleeptime)
+            pass
         elif sleeptime < -self.dt and self.report:
             print(f"Warning: Loop running {-sleeptime*1000:.1f}ms behind")
         self.iteration += 1
@@ -133,8 +144,8 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
         time.sleep(0.5)
         
         # Control parameters
-        KP = 150.0
-        KD = 3.5
+        KP = 300.0
+        KD = 1
         print(f"Control gains: KP={KP}, KD={KD}")
 
         for motor_id, motor in motors.items():
@@ -166,18 +177,30 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
         movestarttime = None
         
         loop = SoftRealtimeLoop(dt=0.02, report=True, fade=0)  # 50Hz
-        
+      
         with loop:
-            for t in loop:
+            for t in loop: 
+
+                
+
                 # Read current positions
                 for i, motor_id in enumerate(motor_ids):
                     motor = motors[motor_id]
-                    if motor.read_feedback(timeout=0.0005):
+                    if motor.read_feedback(timeout=0.010):
                         current_positions_deg[i] = math.degrees(motor.position)
-                    #     print(f"[Motor Process] Motor ID {motor_id} Position Update: {current_positions_deg[i]:.2f}°")
-                    # else:
-                    #     print(f"[Motor Process] Warning: No feedback from Motor ID {motor_id}"  )
-                
+
+                # Initial 1 s settle at zero
+                if t < 1.0:
+                    for x, motor in motors.items():
+                        motor.send_mit_command(
+                            position=0.0,
+                            velocity=0.0,
+                            kp=KP,
+                            kd=KD,
+                            torque=0.0
+                        ) 
+                    continue
+
                 # Check for new destination
                 new_dest = None
                 if dest_queue:
@@ -205,13 +228,17 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                         move_active = True
                         print(f"[Motor Process] NEW MOVE: {src_deg.tolist()}° -> {dest_deg.tolist()}° (times: {movetime.tolist()}s)")
                 
+
+                
                 # Execute active move
                 all_finished = True
                 if move_active and movestarttime:
                     elapsed = time.time() - movestarttime
                     # print("Elapsed:", elapsed, "movetime:", movetime, "movestarttime:", movestarttime, " | ", time.time())
                     targets_deg = np.zeros(num_motors)
-                    
+                    targets_rad = np.zeros(num_motors)
+                    targets_vel_rad = np.zeros(num_motors)
+
                     for i, motor_id in enumerate(motor_ids):
                         Ti = movetime[i]
                         if elapsed >= Ti:
@@ -221,18 +248,20 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                             # print("elapsed / Ti : ", elapsed / Ti)
                             s = scurve01(elapsed / Ti)
                             targets_deg[i] = src_deg[i] + (dest_deg[i] - src_deg[i]) * s
+
+                            targets_vel_rad[i] = np.radians((scurve01_derivative(elapsed / Ti) * (dest_deg[i] - src_deg[i]) / Ti))
+
                             print(f"t = {t:.1f} Motor {motor_id}: s={s:.3f}, target={targets_deg[i]:.2f}°")
                         
                         if abs(current_positions_deg[i] - dest_deg[i]) > 0.2:  # 0.2° tolerance
                             all_finished = False
-                    
-                    # Send commands
-                    targets_rad = np.radians(targets_deg)
-                    for i, motor_id in enumerate(motor_ids):
+
+                        targets_rad[i] = np.radians(targets_deg[i]) 
+
                         motors[motor_id].send_mit_command(
-                            position=targets_rad[i], velocity=0.0, kp=KP, kd=KD, torque=3.0
+                            position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP, kd=KD, torque=3.0
                         )
-                    
+                                        
                     # Status every 1s
                     if t % 1.0 < 0.02: 
                         for i, motor_id in enumerate(motor_ids):
@@ -242,23 +271,16 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                                   f"Actual:{current_positions_deg[i]:6.1f}° Err:{err:6.1f}°")
                     
                     if all_finished:
-                        # Read current positions
-                        for i, motor_id in enumerate(motor_ids):
-                            motor = motors[motor_id]
-                            if motor.read_feedback(timeout=0.0005):
-                                current_positions_deg[i] = math.degrees(motor.position)
-                            #     print(f"[Motor Process] Motor ID {motor_id} Position Update: {current_positions_deg[i]:.2f}°")
-                            # else:
-                            #     print(f"[Motor Process] Warning: No feedback from Motor ID {motor_id}"  )
                         current_dest_deg = dest_deg.copy()
                         move_active = False
                         print(f"[Motor Process] ✅ Reached {current_dest_deg.tolist()}° "
                                 f"(actual: {current_positions_deg.tolist()}°)")
+                        
                         # Hold position with low torque
                         for i, motor_id in enumerate(motor_ids):
                             motors[motor_id].send_mit_command(
                                 position=np.radians(current_dest_deg[i]), velocity=0.0, 
-                                kp=KP*0.5, kd=KD, torque=0.0  # Passive hold
+                                kp=max(450, KP*1.5), kd=KD, torque=0.0  # Passive hold
                             )
                 
                 # Default hold if no move
@@ -266,9 +288,10 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                     for i, motor_id in enumerate(motor_ids):
                         if t % 1.0 < 0.02: 
                             print("Hold at: ", current_dest_deg[i])
+                        
                         motors[motor_id].send_mit_command(
                             position=np.radians(current_dest_deg[i]), velocity=0.0, 
-                            kp=KP*0.3, kd=KD*0.8, torque=0.0
+                            kp=max(450, KP*1.5), kd=KD, torque=0.0
                         )
     
     except KeyboardInterrupt:
