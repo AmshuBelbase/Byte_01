@@ -80,12 +80,11 @@ if __name__ == '__main__':
     
     # Predefined destinations
     destinations = {
-        '1': np.array([0.0]),
-        '2': np.array([40.0]),
-        '3': np.array([60.0]),
-        '4': np.array([-40.0]),
-        '5': np.array([-60.0]),
-        '6': np.array([0.0]),
+        '1': np.array([0.0,0.0,0.0]),
+        '2': np.array([40.0,20.0,30.0]),
+        '3': np.array([60.0,30.0,40.0]),
+        '4': np.array([-40.0,-20.0,-30.0]),
+        '5': np.array([-60.0,-30.0,-40.0])
     }
     
     print("\n📋 Available commands:")
