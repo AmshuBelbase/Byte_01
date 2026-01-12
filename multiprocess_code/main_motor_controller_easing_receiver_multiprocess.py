@@ -158,7 +158,7 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
         
         # S-curve timing parameters
         BASEANGLE = 360.0
-        BASETIME = 4.0
+        BASETIME = 2.0
         MINTIME = 0.08
         SMALLANGLETHRESH = 5.0
         
@@ -179,8 +179,6 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
       
         with loop:
             for t in loop: 
-
-                
 
                 # Read current positions
                 for i, motor_id in enumerate(motor_ids):
@@ -261,7 +259,8 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                             position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP, kd=KD, torque=0.0
                         )
 
-                        print(f"SENT t = {t:.1f} Motor {motor_id}: target={targets_deg[i]:.2f}°")
+                        if t % 1.0 < 0.02: 
+                            print(f"SENT t = {t:.1f} Motor {motor_id}: target={targets_deg[i]:.2f}°")
 
                         if abs(current_positions_deg[i] - dest_deg[i]) > 0.2:  # 0.2° tolerance
                             all_finished = False
@@ -288,11 +287,10 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                             )
                 
                 # Default hold if no move
-                elif not move_active:
-                    for i, motor_id in enumerate(motor_ids):
-                        if t % 5.0 < 0.02: 
-                            print("Hold at: ", current_dest_deg[i])
-                        
+                elif not move_active: 
+                    if t % 5.0 < 0.02: 
+                        print("Hold at: ", current_dest_deg)
+                    for i, motor_id in enumerate(motor_ids): 
                         motors[motor_id].send_mit_command(
                             position=np.radians(current_dest_deg[i]), velocity=0.0, 
                             kp=max(450, KP*1.5), kd=KD, torque=0.0
