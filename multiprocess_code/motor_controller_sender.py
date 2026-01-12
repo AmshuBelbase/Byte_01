@@ -77,41 +77,99 @@ if __name__ == '__main__':
             print("❌ Still cannot connect. Exiting.")
             exit(1)
         print("✅ Connected on retry!")
-    
-    # Predefined destinations
-    destinations = {
-        '1': np.array([0.0,0.0,0.0]),
-        '2': np.array([40.0,20.0,30.0]),
-        '3': np.array([60.0,30.0,40.0]),
-        '4': np.array([-40.0,-20.0,-30.0]),
-        '5': np.array([-60.0,-30.0,-40.0])
-    }
-    
-    print("\n📋 Available commands:")
-    print("  1 - Move to [0°, 0°, 0°] (home)")
-    print("  2 - Move to [40°, 20°, 30°]")
-    print("  3 - Move to [60°, 30°, 40°]")
-    print("  4 - Move to [-40°, -20°, -30°]")
-    print("  5 - Move to [-60°, -30°, -40°]")
-    print("  q - Quit")
-    print()
+
+    destinations = np.array([0.0, 0.0, 0.0])  # Use np.array from start
+
+    print("\n📋 First enter Motor ID, then enter angle to be sent, then enter y to sent or n to continue.")
+    print("   Current targets:", destinations.tolist())
     
     while True:
-        cmd = input("Cmd (1/2/3/q): ").strip()
         
-        if cmd.lower() == 'q':
+
+        motor_id = input("Enter Motor ID (1/2/3) (or 'q' to quit): ").strip()
+        if motor_id.lower() == 'q':
             print("Exiting sender...")
             break
-            
-        if cmd in destinations:
-            array = destinations[cmd]
-            
-            if send_array_to_motor(array, HOST, PORT):
-                print(f"✅ Sent: {array.tolist()}°")
+
+        if motor_id not in ['1', '2', '3']:
+            print("❌ Invalid Motor ID. Please enter 1, 2, or 3.")
+            continue
+
+        try:
+            motor_id = int(motor_id)
+        except ValueError:
+            print("❌ Invalid Motor ID. Please enter a numeric value.")
+            continue
+
+        angle_str = input("Enter angle in degrees(eg. 50.5) (or 'q' to quit): ").strip()
+        if angle_str.lower() == 'q':
+            print("Exiting sender...")
+            break
+
+        try:
+            angle = float(angle_str)
+            destinations[motor_id-1] = angle
+
+            print(f"✅ Motor {motor_id} set to {angle:.1f}°")
+            print(f"   Current targets: {destinations.tolist()}°")
+
+        except ValueError:
+            print("❌ Invalid angle. Please enter a numeric value.")
+            continue
+ 
+
+        send_cmd = input("Send command? (y/n): ").strip().lower()
+        if send_cmd == 'n':
+            continue
+        elif send_cmd == 'y':
+            print(f"📤 Sending: {destinations.tolist()}°") 
+            if send_array_to_motor(destinations, HOST, PORT):
+                print(f"✅ Sent: {destinations.tolist()}°")
             else:
                 print("⚠️  Send failed - receiver may have disconnected")
-                
+
         else:
-            print("❌ Invalid command. Use 1/2/3/q")
-    
+            print("❌ Invalid input. Please enter 'y' or 'n'.")
+
+
     print("Sender closed.")
+
+
+    
+    # # Predefined destinations
+    # destinations = {
+    #     '1': np.array([0.0,0.0,0.0]),
+    #     '2': np.array([40.0,20.0,30.0]),
+    #     '3': np.array([60.0,30.0,40.0]),
+    #     '4': np.array([-40.0,-20.0,-30.0]),
+    #     '5': np.array([-60.0,-30.0,-40.0])
+    # }
+    
+    # print("\n📋 Available commands:")
+    # print("  1 - Move to [0°, 0°, 0°] (home)")
+    # print("  2 - Move to [40°, 20°, 30°]")
+    # print("  3 - Move to [60°, 30°, 40°]")
+    # print("  4 - Move to [-40°, -20°, -30°]")
+    # print("  5 - Move to [-60°, -30°, -40°]")
+    # print("  q - Quit")
+    # print()
+    
+    # while True:
+    #     cmd = input("Cmd (1/2/3/q): ").strip()
+        
+    #     if cmd.lower() == 'q':
+    #         print("Exiting sender...")
+    #         break
+            
+    #     if cmd in destinations:
+    #         array = destinations[cmd]
+            
+    #         if send_array_to_motor(array, HOST, PORT):
+    #             print(f"✅ Sent: {array.tolist()}°")
+    #         else:
+    #             print("⚠️  Send failed - receiver may have disconnected")
+                
+    #     else:
+    #         print("❌ Invalid command. Use 1/2/3/q")
+    
+    # print("Sender closed.")
