@@ -14,6 +14,7 @@ import multiprocessing as mp
 import socket
 import pickle
 from ak60_v3_control import AK60V3Motor  # Your library [file:2]
+import json
 
 def scurve01(s):
     """Smooth S-curve from 0 to 1 for s in [0,1]"""
@@ -143,9 +144,19 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
             print(f"Motor ID {motor_id} enabled")
         time.sleep(0.5)
         
-        # Control parameters
-        KP = 50.0
-        KD = 2
+        num_motors = len(motor_ids)
+        
+        KP = np.zeros(num_motors)
+        KD = np.zeros(num_motors)
+        # Load motor config from JSON file
+        with open('motor_config.json', 'r') as f:
+            config = json.load(f)
+
+        for i, motor_id in enumerate(motors.keys()):
+            # READ KP,KD from motor config
+            KP[i] = config['motors'][str(motor_id)]['kp']
+            KD[i] = config['motors'][str(motor_id)]['kd']
+
         print(f"Control gains: KP={KP}, KD={KD}")
 
         for motor_id, motor in motors.items():
@@ -166,7 +177,7 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
         print("Send dest via dest_queue.put(np.array([10.0,40.0,60.0]))")
         print("Press Ctrl+C to stop")
         
-        num_motors = len(motor_ids)
+        
         current_positions_deg = np.zeros(num_motors)
         current_dest_deg = np.zeros(num_motors)
         move_active = False
@@ -187,13 +198,13 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                         current_positions_deg[i] = math.degrees(motor.position)
 
                 # Initial 1 s settle at zero
-                if t < 1.0:
-                    for x, motor in motors.items():
-                        motor.send_mit_command(
+                if t < 1.0: 
+                    for i, motor_id in enumerate(motor_ids):
+                        motors[motor_id].send_mit_command(
                             position=0.0,
                             velocity=0.0,
-                            kp=KP,
-                            kd=KD,
+                            kp=KP[i],
+                            kd=KD[i],
                             torque=0.0
                         ) 
                     continue
@@ -256,7 +267,7 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
 
                         motor = motors[motor_id]
                         motor.send_mit_command(
-                            position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP, kd=KD, torque=0.0
+                            position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP[i], kd=KD[i], torque=0.0
                         )
 
                         if t % 1.0 < 0.02: 
@@ -279,11 +290,11 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                         print(f"[Motor Process] ✅ Reached {current_dest_deg.tolist()}° "
                                 f"(actual: {current_positions_deg.tolist()}°)")
                         
-                        # Hold position with low torque
+                        # Hold position with higher torque
                         for i, motor_id in enumerate(motor_ids):
                             motors[motor_id].send_mit_command(
                                 position=np.radians(current_dest_deg[i]), velocity=0.0, 
-                                kp=max(450, KP*1.5), kd=KD, torque=0.0  # Passive hold
+                                kp=min(450, KP[i]*1.5), kd=KD[i], torque=0.0  # Passive hold
                             )
                 
                 # Default hold if no move
@@ -293,7 +304,7 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
                     for i, motor_id in enumerate(motor_ids): 
                         motors[motor_id].send_mit_command(
                             position=np.radians(current_dest_deg[i]), velocity=0.0, 
-                            kp=max(450, KP*1.5), kd=KD, torque=0.0
+                            kp=min(450, KP[i]*1.5), kd=KD[i], torque=0.0
                         )
     
     except KeyboardInterrupt:
