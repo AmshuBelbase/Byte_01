@@ -349,7 +349,7 @@ def motor_can(can_interface='can0', dest_queue=None):
 
                             motors[motor_id].send_mit_command(
                                 position=theta_hold, velocity=0.0, 
-                                kp=min(450, KP[i]*1.5), kd=KD[i], torque=0.0  # Passive hold
+                                kp=min(450, KP[i]*1.5), kd=KD[i], torque=tau_ff_hold  # Passive hold
                             )
 
                         print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm)")
