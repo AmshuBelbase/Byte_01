@@ -17,23 +17,33 @@ from ak60_v3_control import AK60V3Motor  # Your library [file:2]
 import json
 
 
-motor_ids = [1,2,3]
+motor_ids = [2]
 num_motors = len(motor_ids)
 
-def scurve01(s):
+
+
+def scurve(s):
     """Smooth S-curve from 0 to 1 for s in [0,1]"""
     s = max(0.0, min(1.0, s))
     return 3.0*s*s - 2.0*s*s*s
 
 
-def scurve01_derivative(s):
+def scurve_derivative(s):
     """
     Derivative of S-curve: velocity profile
-    For scurve01(s) = 3s² - 2s³
+    For scurve(s) = 3s² - 2s³
     Derivative: d/ds = 6s - 6s²
     """
     s = max(0.0, min(1.0, s))
     return 6.0*s - 6.0*s*s
+
+
+def scurve_second_derivative(s):
+    # scurve(s) = 3 s^2 - 2 s^3
+    # d/ds = 6s - 6s^2
+    # d²/ds² = 6 - 12s
+    s = max(0.0, min(1.0, s))
+    return 6.0 - 12.0*s
 
 
 class SoftRealtimeLoop:
@@ -207,6 +217,10 @@ def motor_can(can_interface='can0', dest_queue=None):
         KP = np.zeros(num_motors)  # Will be updated from queue
         KD = np.zeros(num_motors)  # Will be updated from queue
 
+        m_load = np.full(num_motors, 0.7)    # kg
+        r_load = np.full(num_motors, 0.235)  # m
+        tau_ff_hold = 0.0  # Feedforward torque
+
         print("Waiting for config from JSON process...")
         
         loop = SoftRealtimeLoop(dt=0.1, report=True, fade=0)
@@ -278,25 +292,36 @@ def motor_can(can_interface='can0', dest_queue=None):
                     targets_deg = np.zeros(num_motors)
                     targets_rad = np.zeros(num_motors)
                     targets_vel_rad = np.zeros(num_motors)
+                    acc_rad = np.zeros(num_motors)
+                    
+                    
+                    J_tot = m_load * r_load * r_load     # kg·m², shape (num_motors,)
 
                     for i, motor_id in enumerate(motor_ids):
                         Ti = movetime[i]
                         if elapsed >= Ti:
-                            # print("Elapsed", elapsed, ">= Ti:", Ti)
                             targets_deg[i] = dest_deg[i]
                         else:
-                            # print("elapsed / Ti : ", elapsed / Ti)
-                            s = scurve01(elapsed / Ti)
+                            eT = elapsed / Ti
+                            s = scurve(eT)
+                            ds_dt = scurve_derivative(eT) / Ti
+                            d2s_dt2 = scurve_second_derivative(eT) / (Ti*Ti)
                             targets_deg[i] = src_deg[i] + (dest_deg[i] - src_deg[i]) * s
-
-                            targets_vel_rad[i] = np.radians((scurve01_derivative(elapsed / Ti) * (dest_deg[i] - src_deg[i]) / Ti))
+                            targets_vel_rad[i] = np.radians(ds_dt * (dest_deg[i] - src_deg[i]))
+                            acc_rad[i] = np.radians((dest_deg[i] - src_deg[i])) * d2s_dt2
 
       
                         targets_rad[i] = np.radians(targets_deg[i]) 
 
+                        tau_inertia = J_tot[i] * acc_rad[i]
+                        tau_grav = m_load[i] * (9.81) * r_load[i] * np.sin(targets_rad[i])
+                        tau_ff = tau_inertia + tau_grav
+
+                        print(f"Motor {motor_id}: TargetAngle={targets_rad[i]:.2f} | Acc={acc_rad[i]:.2f} rad/s² | Tau_inertia={tau_inertia:.3f} Nm | Tau_grav={tau_grav:.3f} Nm | Tau_ff={tau_ff:.3f} Nm")
+
                         motor = motors[motor_id]
                         motor.send_mit_command(
-                            position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP[i], kd=KD[i], torque=0.0
+                            position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP[i], kd=KD[i], torque=tau_ff
                         )
 
                         err_relative = abs(current_positions_deg[i] - targets_deg[i])
@@ -315,12 +340,20 @@ def motor_can(can_interface='can0', dest_queue=None):
                         move_active = False
                         print(f"[Motor Process] ✅ Reached {current_dest_deg.tolist()}° (actual: {current_positions_deg.tolist()}°)") 
                         
-                        # Hold position with higher torque
+                        
+                        
                         for i, motor_id in enumerate(motor_ids):
+                            theta_hold = np.radians(current_dest_deg[i])
+                            tau_grav_hold = m_load[i] * 9.81 * r_load[i] * np.sin(theta_hold)
+                            tau_ff_hold = tau_grav_hold   # inertia term is zero at steady state
+
                             motors[motor_id].send_mit_command(
-                                position=np.radians(current_dest_deg[i]), velocity=0.0, 
+                                position=theta_hold, velocity=0.0, 
                                 kp=min(450, KP[i]*1.5), kd=KD[i], torque=0.0  # Passive hold
                             )
+
+                        print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm)")
+                        
                 
                 # Default hold if no move
                 elif not move_active: 
@@ -328,15 +361,23 @@ def motor_can(can_interface='can0', dest_queue=None):
                     hold_kp = KP if np.any(KP > 0) else np.full(num_motors, 150.0)
                     hold_kd = KD if np.any(KD > 0) else np.full(num_motors, 1.5)
 
-                    if hold_print: 
-                        print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()})")
-                        hold_print = False
 
-                    for i, motor_id in enumerate(motor_ids): 
+                    for i, motor_id in enumerate(motor_ids):
+                        theta_hold = np.radians(current_dest_deg[i])
+                        tau_grav_hold = m_load[i] * 9.81 * r_load[i] * np.sin(theta_hold)
+                        tau_ff_hold = tau_grav_hold   # inertia term is zero at steady state
+
                         motors[motor_id].send_mit_command(
-                            position=np.radians(current_dest_deg[i]), velocity=0.0, 
-                            kp=min(450, hold_kp[i]*1.5), kd=hold_kd[i], torque=0.0
+                            position=theta_hold,
+                            velocity=0.0,
+                            kp=min(450, hold_kp[i]*1.5),
+                            kd=hold_kd[i],
+                            torque=tau_ff_hold
                         )
+                    
+                    if hold_print: 
+                        print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm)")
+                        hold_print = False
     
     except KeyboardInterrupt:
         print("\n[Motor Process] Interrupted by user")
