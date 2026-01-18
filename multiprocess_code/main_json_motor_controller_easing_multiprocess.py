@@ -198,7 +198,7 @@ def motor_can(can_interface='can0', dest_queue=None):
         
         # S-curve timing parameters
         BASEANGLE = 360.0
-        BASETIME = 2.0
+        BASETIME = 4.0
         MINTIME = 0.08
         SMALLANGLETHRESH = 5.0
         
@@ -217,7 +217,7 @@ def motor_can(can_interface='can0', dest_queue=None):
         KP = np.zeros(num_motors)  # Will be updated from queue
         KD = np.zeros(num_motors)  # Will be updated from queue
 
-        m_load = np.full(num_motors, 0.7)    # kg
+        m_load = np.full(num_motors, 3.2)    # kg
         r_load = np.full(num_motors, 0.235)  # m
         tau_ff_hold = 0.0  # Feedforward torque
 
@@ -227,6 +227,7 @@ def motor_can(can_interface='can0', dest_queue=None):
 
         hold_print = True
         last_print = time.time()
+        last_print_2 = time.time()
       
         with loop:
             for t in loop: 
@@ -340,7 +341,9 @@ def motor_can(can_interface='can0', dest_queue=None):
                         move_active = False
                         print(f"[Motor Process] ✅ Reached {current_dest_deg.tolist()}° (actual: {current_positions_deg.tolist()}°)") 
                         
-                        
+                        # Use JSON gains if available, otherwise safe defaults
+                        hold_kp = KP if np.any(KP > 0) else np.full(num_motors, 150.0)
+                        hold_kd = KD if np.any(KD > 0) else np.full(num_motors, 1.5)
                         
                         for i, motor_id in enumerate(motor_ids):
                             theta_hold = np.radians(current_dest_deg[i])
@@ -348,8 +351,11 @@ def motor_can(can_interface='can0', dest_queue=None):
                             tau_ff_hold = tau_grav_hold   # inertia term is zero at steady state
 
                             motors[motor_id].send_mit_command(
-                                position=theta_hold, velocity=0.0, 
-                                kp=min(450, KP[i]*1.5), kd=KD[i], torque=tau_ff_hold  # Passive hold
+                                position=theta_hold,
+                                velocity=0.0,
+                                kp=min(450, hold_kp[i]),
+                                kd=hold_kd[i],
+                                torque=tau_ff_hold
                             )
 
                         print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm)")
@@ -370,10 +376,14 @@ def motor_can(can_interface='can0', dest_queue=None):
                         motors[motor_id].send_mit_command(
                             position=theta_hold,
                             velocity=0.0,
-                            kp=min(450, hold_kp[i]*1.5),
+                            kp=min(450, hold_kp[i]),
                             kd=hold_kd[i],
                             torque=tau_ff_hold
                         )
+
+                    if time.time()>(last_print_2+3.2): # print every 0.1 second
+                        last_print_2 = time.time()
+                        print(f"[Motor Process] (Actual: {current_positions_deg.tolist()}°)")
                     
                     if hold_print: 
                         print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm)")
