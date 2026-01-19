@@ -17,8 +17,19 @@ from ak60_v3_control import AK60V3Motor  # Your library [file:2]
 import json
 
 
-motor_ids = [2]
+motor_ids = [1,2,3]
 num_motors = len(motor_ids)
+
+error_dict = {
+    0: "No Error",
+    1: "Motor Over Temperature",
+    2: "Over Current",
+    3:"Over Voltage",
+    4:"Under Voltage",
+    5:"Encoder Error",
+    6:"MOSFET Over Temperature",
+    7:"Motor Lock Up",
+}
 
 
 
@@ -207,6 +218,8 @@ def motor_can(can_interface='can0', dest_queue=None):
         
         
         current_positions_deg = np.zeros(num_motors)
+        current_temp_deg = np.zeros(num_motors)
+
         current_dest_deg = np.zeros(num_motors)
         move_active = False
         movetime = np.zeros(num_motors)
@@ -217,8 +230,11 @@ def motor_can(can_interface='can0', dest_queue=None):
         KP = np.zeros(num_motors)  # Will be updated from queue
         KD = np.zeros(num_motors)  # Will be updated from queue
 
-        m_load = np.full(num_motors, 3.2)    # kg
-        r_load = np.full(num_motors, 0.235)  # m
+        # m_load = np.full(num_motors, 3.2)    # kg
+        m_load = np.array([1.2, 1.82, 0.15])    # kg
+        r_load = np.array([0.11, 0.095, 0.108])    # m
+
+        # r_load = np.full(num_motors, 0.235)  # m
         tau_ff_hold = 0.0  # Feedforward torque
 
         print("Waiting for config from JSON process...")
@@ -237,6 +253,10 @@ def motor_can(can_interface='can0', dest_queue=None):
                     motor = motors[motor_id]
                     if motor.read_feedback(timeout=0.010):
                         current_positions_deg[i] = math.degrees(motor.position)
+                        current_temp_deg[i] = motor.temperature
+                        err_status = motor.error
+                        if err_status != 0:
+                            print(f"\n\n\n\n\n\n[Motor Process] ⚠️ Motor ID {motor_id} Error: {error_dict.get(err_status, 'Unknown Error')} (Code {err_status})")
 
                 # Initial 1 s settle at zero
                 if t < 1.0: 
@@ -318,7 +338,7 @@ def motor_can(can_interface='can0', dest_queue=None):
                         tau_grav = m_load[i] * (9.81) * r_load[i] * np.sin(targets_rad[i])
                         tau_ff = tau_inertia + tau_grav
 
-                        print(f"Motor {motor_id}: TargetAngle={targets_rad[i]:.2f} | Acc={acc_rad[i]:.2f} rad/s² | Tau_inertia={tau_inertia:.3f} Nm | Tau_grav={tau_grav:.3f} Nm | Tau_ff={tau_ff:.3f} Nm")
+                        print(f"Motor {motor_id}: Temp={current_temp_deg[i]:.1f}°C | TargetAngle={targets_rad[i]:.2f} | Acc={acc_rad[i]:.2f} rad/s² | Tau_inertia={tau_inertia:.3f} Nm | Tau_grav={tau_grav:.3f} Nm | Tau_ff={tau_ff:.3f} Nm")
 
                         motor = motors[motor_id]
                         motor.send_mit_command(
@@ -333,13 +353,13 @@ def motor_can(can_interface='can0', dest_queue=None):
 
                     if time.time()>(last_print+0.2): # print every 0.1 second
                         last_print = time.time()
-                        print(f"t {t:.1f} M {motor_ids}: Target={np.round(targets_deg, 2)} | Actual={np.round(current_positions_deg, 2)} | TrackEr={np.round(np.abs(current_positions_deg - targets_deg), 2)} | FinalEr={np.round(np.abs(current_positions_deg - dest_deg), 2)} | KP={KP} KD={KD} Vel={np.round(np.degrees(targets_vel_rad), 1)}°/s")
+                        print(f"t {t:.1f} M {motor_ids}:  Temp={current_temp_deg[i]:.1f}°C | Target={np.round(targets_deg, 2)} | Actual={np.round(current_positions_deg, 2)} | TrackEr={np.round(np.abs(current_positions_deg - targets_deg), 2)} | FinalEr={np.round(np.abs(current_positions_deg - dest_deg), 2)} | KP={KP} KD={KD} Vel={np.round(np.degrees(targets_vel_rad), 1)}°/s")
 
                         # print(f"t {t:.1f} M {motor_ids}: Target={str(np.round(targets_deg, 2))} | Actual:{str(np.round(current_positions_deg, 2))} | TrackEr:{str(np.round(abs(current_positions_deg - targets_deg), 2))} | FinalEr:{str(np.round(abs(current_positions_deg - dest_deg), 2))} | KP={KP} KD={KD} Vel={math.degrees(targets_vel_rad)}°/s")
                                                             
                     if all_finished:
                         move_active = False
-                        print(f"[Motor Process] ✅ Reached {current_dest_deg.tolist()}° (actual: {current_positions_deg.tolist()}°)") 
+                        print(f"[Motor Process] ✅ Reached {current_dest_deg.tolist()}° (actual: {current_positions_deg.tolist()}°)  Temp={current_temp_deg[i]:.1f}°C") 
                         
                         # Use JSON gains if available, otherwise safe defaults
                         hold_kp = KP if np.any(KP > 0) else np.full(num_motors, 150.0)
@@ -355,10 +375,10 @@ def motor_can(can_interface='can0', dest_queue=None):
                                 velocity=0.0,
                                 kp=min(450, hold_kp[i]),
                                 kd=hold_kd[i],
-                                torque=tau_ff_hold
+                                torque=0.0
                             )
 
-                        print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm)")
+                        print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm), Temp={current_temp_deg[i]:.1f}°C")
                         
                 
                 # Default hold if no move
@@ -378,15 +398,15 @@ def motor_can(can_interface='can0', dest_queue=None):
                             velocity=0.0,
                             kp=min(450, hold_kp[i]),
                             kd=hold_kd[i],
-                            torque=tau_ff_hold
+                            torque=0.0
                         )
 
-                    if time.time()>(last_print_2+3.2): # print every 0.1 second
+                    if time.time()>(last_print_2+2.2): # print every 0.1 second
                         last_print_2 = time.time()
-                        print(f"[Motor Process] (Actual: {current_positions_deg.tolist()}°)")
+                        print(f"[Motor Process] (Actual: {current_positions_deg.tolist()}°) Temp={current_temp_deg.tolist()}°C")
                     
                     if hold_print: 
-                        print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm)")
+                        print(f"\nHold at: {current_dest_deg.tolist()}° (KP={hold_kp.tolist()}, KD={hold_kd.tolist()}, Torque={tau_ff_hold:.2f} Nm) Temp={current_temp_deg.tolist()}°C")
                         hold_print = False
     
     except KeyboardInterrupt:
