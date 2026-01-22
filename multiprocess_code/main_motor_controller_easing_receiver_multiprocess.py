@@ -169,7 +169,7 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
         
         # S-curve timing parameters
         BASEANGLE = 360.0
-        BASETIME = 2.0
+        BASETIME = 3.0
         MINTIME = 0.08
         SMALLANGLETHRESH = 5.0
         
@@ -259,10 +259,13 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
 
                             targets_vel_rad[i] = np.radians((scurve01_derivative(elapsed / Ti) * (dest_deg[i] - src_deg[i]) / Ti))
 
+                        if motor_id == 3:
+                            targets_deg[i] = targets_deg[i]  # Adjust to gear Ratio
 
                         targets_rad[i] = np.radians(targets_deg[i]) 
 
                         motor = motors[motor_id]
+                        targets_vel_rad[i] = 0.0
                         motor.send_mit_command(
                             position=targets_rad[i], velocity=targets_vel_rad[i], kp=KP[i], kd=KD[i], torque=0.0
                         )

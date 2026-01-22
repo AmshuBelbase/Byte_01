@@ -12,6 +12,12 @@ import _3dof_ik_with_shift_circle_method as ik
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
+# S-curve timing parameters
+BASEANGLE = 360.0
+BASETIME = 3.0
+MINTIME = 0.08
+SMALLANGLETHRESH = 5.0
+
 # Link lengths in cm
 L1 = 5.995  # Link 1 length
 linkConst = -9.094  # Constant link between L1 and L2 (RADIUS OF CIRCLE WHEN L1 IS ROTATED ALONG Z AXIS)
@@ -38,6 +44,7 @@ coords = [(x, y, z) for y in ys] # Build the trajectory points
 print("Length: ", len(coords))
 
 reference_angles = np.array([0, 0, 0])
+last_angles = np.array([0, 0, 0])
 ref_updated = False
 
 def send_array_to_motor(array, host='127.0.0.1', port=50000, timeout=2.0):
@@ -93,6 +100,7 @@ def update(coords, interval=10):
     for coord in coords:
         x, y, z = coord
         theta1, theta2, theta3 = ik.inverse_kinematics(x, y, z, L1, linkConst, L2, L3)
+        max_time = interval/1000.0  # Initially given delay
         if not ref_updated:
             reference_angles[:] = np.array([theta1, theta2, theta3])
             ref_updated = True
@@ -102,6 +110,13 @@ def update(coords, interval=10):
             theta1 = theta1 - reference_angles[0]
             theta2 = theta2 - reference_angles[1]
             theta3 = theta3 - reference_angles[2]
+            # abs_diff
+            e1 = abs(np.degrees(theta1) - last_angles[1])
+            e2 = abs(np.degrees(theta2) - last_angles[0])
+            e3 = abs(np.degrees(theta3) - last_angles[2])
+            max_time = max(e1,e2,e3) / (min(BASEANGLE/BASETIME, MINTIME))  # Assume max speed 180 deg/s
+            max_time /= 1000.0
+            last_angles[:] = np.array([np.degrees(theta2), np.degrees(theta1), np.degrees(theta3)])
             # print(np.degrees(theta1), np.degrees(theta2), np.degrees(theta3))
             destinations = np.array([np.degrees(theta2), np.degrees(theta1), np.degrees(theta3)])
             if send_array_to_motor(destinations, HOST, PORT):
@@ -109,7 +124,8 @@ def update(coords, interval=10):
             else:
                 print(f"📤 Send failed - {destinations.tolist()}°") 
                 print("⚠️  Send failed - receiver may have disconnected")
-        time.sleep(interval / 1000.0)  # Convert ms to seconds
+        print(f"Waiting for {max_time:.2f} s before next command...")
+        time.sleep(max_time)  # In seconds
 
 def anim_update(num):
     global ref_updated
