@@ -338,7 +338,7 @@ def motor_can(can_interface='can0', dest_queue=None):
                         tau_grav = m_load[i] * (9.81) * r_load[i] * np.sin(targets_rad[i])
                         tau_ff = tau_inertia + tau_grav
 
-                        print(f"Motor {motor_id}: Temp={current_temp_deg[i]:.1f}°C | TargetAngle={targets_rad[i]:.2f} | Acc={acc_rad[i]:.2f} rad/s² | Tau_inertia={tau_inertia:.3f} Nm | Tau_grav={tau_grav:.3f} Nm | Tau_ff={tau_ff:.3f} Nm")
+                        # print(f"Motor {motor_id}: Temp={current_temp_deg[i]:.1f}°C | TargetAngle={targets_rad[i]:.2f} | Acc={acc_rad[i]:.2f} rad/s² | Tau_inertia={tau_inertia:.3f} Nm | Tau_grav={tau_grav:.3f} Nm | Tau_ff={tau_ff:.3f} Nm")
 
                         motor = motors[motor_id]
                         motor.send_mit_command(

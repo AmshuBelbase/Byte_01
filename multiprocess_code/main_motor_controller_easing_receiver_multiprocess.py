@@ -259,9 +259,6 @@ def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
 
                             targets_vel_rad[i] = np.radians((scurve01_derivative(elapsed / Ti) * (dest_deg[i] - src_deg[i]) / Ti))
 
-                            
-                        
-                        
 
                         targets_rad[i] = np.radians(targets_deg[i]) 
 
