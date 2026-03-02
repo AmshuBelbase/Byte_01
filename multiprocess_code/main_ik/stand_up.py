@@ -92,9 +92,9 @@ def update(start_at, total_time, interval_time):
             d1 = abs(np.degrees(theta1) - last_angles[1])
             d2 = abs(np.degrees(theta2) - last_angles[0])
             d3 = abs(np.degrees(theta3) - last_angles[2]) 
-            last_angles[:] = np.array([np.degrees(theta2), np.degrees(theta1), np.degrees(theta3)])
+            last_angles[:] = np.array([np.degrees(theta1), np.degrees(theta2), np.degrees(theta3)])
             # print(np.degrees(theta1), np.degrees(theta2), np.degrees(theta3))
-            destinations = np.array([np.degrees(theta2), np.degrees(theta1), np.degrees(theta3)])
+            destinations = np.array([np.degrees(theta1), np.degrees(theta2), np.degrees(theta3)])
             if send_array_to_motor(destinations, HOST, PORT):
                 print(f"✅ Sent: {destinations.tolist()}°")
             else:
