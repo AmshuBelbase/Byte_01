@@ -209,7 +209,7 @@ def motor_can(can_interface='can0', dest_queue=None):
         
         # S-curve timing parameters
         BASEANGLE = 360.0
-        BASETIME = 1.0
+        BASETIME = 12.0
         MINTIME = 0.08
         SMALLANGLETHRESH = 5.0
         

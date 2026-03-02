@@ -295,7 +295,7 @@ class AK60V3Motor:
 
 if __name__ == "__main__":
     # Create motor instance (Motor ID = 1)
-    motor = AK60V3Motor(motor_id=3, can_interface='can0')
+    motor = AK60V3Motor(motor_id=2, can_interface='can0')
     
     try:
         print("\n=== AK60-6 V3.0 MIT Mode Control Demo ===\n")
