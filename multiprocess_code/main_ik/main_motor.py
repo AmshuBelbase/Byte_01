@@ -97,7 +97,7 @@ def socket_listener_process(dest_queue, port=50000, host='127.0.0.1'):
         print("[Socket Process] Shutdown")
 
 
-def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
+def motor_can(motor_ids=[1], can_interface='can1', dest_queue=None):
     """
     MAIN PROCESS - Runs on dedicated CPU core
     50Hz realtime motor control loop
@@ -294,8 +294,8 @@ if __name__ == '__main__':
     except RuntimeError:
         pass  # Already set, that's fine
 
-    motor_ids = [1,2,3]
-    can_interface = 'can0'
+    motor_ids = [10,11,12]
+    can_interface = 'can1'
     
     print("="*70)
     print("AK60-6 V3.0 Position Test - Multiple Motors")
