@@ -17,7 +17,7 @@ from ak60_v3_control import AK60V3Motor  # Your library [file:2]
 import json
 
 
-motor_ids = [1,2,3]
+motor_ids = [10,11,12]
 num_motors = len(motor_ids)
 
 error_dict = {
@@ -167,7 +167,7 @@ def json_reader_process(dest_queue):
 
 
 
-def motor_can(can_interface='can0', dest_queue=None):
+def motor_can(can_interface='can1', dest_queue=None):
     """
     ✅ MAIN PROCESS - Runs on dedicated CPU core
     50Hz realtime motor control loop
@@ -440,7 +440,7 @@ if __name__ == '__main__':
         pass  # Already set, that's fine
 
     # motor_ids = [1,2,3]
-    can_interface = 'can0'
+    can_interface = 'can1'
     
     print("="*70)
     print("AK60-6 V3.0 Position Test - Multiple Motors, S-curve")
