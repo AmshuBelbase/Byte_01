@@ -14,7 +14,7 @@ import matplotlib.animation as animation
 import stand_up_animation as anim
 import _3dof_ik_with_shift_circle_method as ik 
 
-leg_side = 'right'  # 'left' or 'right'
+leg_side = 'left'  # 'left' or 'right'
 
 # Link lengths in cm
 L1 = 5.995  # Link 1 length
@@ -25,6 +25,15 @@ L3 = 21.5  # Link 3 length
 reference_angles = np.array([0, 0, 0])
 last_angles = np.array([0, 0, 0])
 ref_updated = False
+
+def wrap_to_180(angle_deg):
+    # Wrap to [-180, 180)
+    angle = (angle_deg + 180) % 360 - 180
+    return angle
+
+def deadband(angle_deg, eps=1e-2):
+    return 0.0 if abs(angle_deg) < eps else angle_deg
+
 
 def send_array_to_motor(array, host='127.0.0.1', port=50000, timeout=2.0):
     """
@@ -66,10 +75,6 @@ def test_connection(host='127.0.0.1', port=50000):
     except:
         return False
 
-def on_complete(anim):
-    plt.close(fig)
-    print("Animation finished and program ended.")
-
 def update(start_at, total_time, interval_time):
     global ref_updated
     global reference_angles
@@ -94,7 +99,19 @@ def update(start_at, total_time, interval_time):
             d3 = abs(np.degrees(theta3) - last_angles[2]) 
             last_angles[:] = np.array([np.degrees(theta1), np.degrees(theta2), np.degrees(theta3)])
             # print(np.degrees(theta1), np.degrees(theta2), np.degrees(theta3))
-            destinations = np.array([np.degrees(theta1), np.degrees(theta2), np.degrees(theta3)])
+            # destinations = np.array([np.degrees(theta1), np.degrees(theta2), np.degrees(theta3)])
+
+            deg1 = np.degrees(theta1)
+            deg2 = np.degrees(theta2)
+            deg3 = np.degrees(theta3)
+
+            deg1 = deadband(wrap_to_180(deg1))
+            deg2 = deadband(wrap_to_180(deg2))
+            deg3 = deadband(wrap_to_180(deg3))
+
+            destinations = np.array([deg1, deg2, deg3])
+
+
             if send_array_to_motor(destinations, HOST, PORT):
                 print(f"✅ Sent: {destinations.tolist()}°")
             else:
@@ -138,12 +155,7 @@ if __name__ == '__main__':
             print("⚠️  First Message Send failed - receiver may have disconnected")
             exit(1)
 
-        animation_mode = False
-
-        while True:
-            fig = plt.figure(figsize=(8,6))
-            ax = fig.add_subplot(111, projection='3d')
-
+        while True: 
             # Reset for new run
             ref_updated = False
 

@@ -97,7 +97,7 @@ def socket_listener_process(dest_queue, port=50000, host='127.0.0.1'):
         print("[Socket Process] Shutdown")
 
 
-def motor_can(motor_ids=[1], can_interface='can1', dest_queue=None):
+def motor_can(motor_ids=[1], can_interface='can0', dest_queue=None):
     """
     MAIN PROCESS - Runs on dedicated CPU core
     50Hz realtime motor control loop
@@ -223,7 +223,7 @@ def motor_can(motor_ids=[1], can_interface='can1', dest_queue=None):
 
                         motor = motors[motor_id]
                         motor.send_mit_command(
-                            position=targets_rad[i], velocity=0.0, kp=KP[i], kd=KD[i], torque=0.0
+                            position=-targets_rad[i], velocity=0.0, kp=KP[i], kd=KD[i], torque=0.0
                         )
 
                         if t % 1.0 < 0.02: 
@@ -294,8 +294,8 @@ if __name__ == '__main__':
     except RuntimeError:
         pass  # Already set, that's fine
 
-    motor_ids = [10,11,12]
-    can_interface = 'can1'
+    motor_ids = [4,5,6]
+    can_interface = 'can0'
     
     print("="*70)
     print("AK60-6 V3.0 Position Test - Multiple Motors")

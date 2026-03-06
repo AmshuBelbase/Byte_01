@@ -20,9 +20,9 @@ def get_position(t, total_time=2.0):
     tuple : (x, y, z) coordinates at time t
     """
     # Parameters
-    x = -9.094
+    x = 9.094
     z_start, z_end = 6, 6
-    y_start, y_end = 20, 38
+    y_start, y_end = 22, 38
 
     # z_start, z_end = 6, -3 # right to left co-ordinates of bots leg for movement
     # y_start, y_end = 35, 27 # max up and max low of bots leg
