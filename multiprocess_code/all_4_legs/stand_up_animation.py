@@ -23,7 +23,7 @@ def get_position(t, total_time=2.0, leg='right', x=-9.094, z_start=6, z_end=6, y
     # Parameters
     x = -9.094 if leg == 'right' else 9.094  # Constant x based on leg
     z_start, z_end = 6, 6
-    y_start, y_end = 20, 38
+    y_start, y_end = 22, 38
 
     # z_start, z_end = 6, -3 # right to left co-ordinates of bots leg for movement
     # y_start, y_end = 35, 27 # max up and max low of bots leg

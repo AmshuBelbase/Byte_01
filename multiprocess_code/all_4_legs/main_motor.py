@@ -327,10 +327,10 @@ if __name__ == '__main__':
 
     motor_ids = [] 
 
-    # motor_ids.extend([1,2,3])  # front left leg, can0
-    # motor_ids.extend([4,5,6])  # back left leg, can0
-    motor_ids.extend([7,8,9])  # front right leg, can1
-    motor_ids.extend([10,11,12])  # back right leg, can1
+    motor_ids.extend([1,2,3])  # front left leg, can0
+    motor_ids.extend([4,5,6])  # back left leg, can0
+    # motor_ids.extend([7,8,9])  # front right leg, can1
+    # motor_ids.extend([10,11,12])  # back right leg, can1
 
     # 1,2,3 - front left leg
     # 4,5,6 - back left leg

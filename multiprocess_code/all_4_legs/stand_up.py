@@ -20,17 +20,27 @@ L1 = 5.995                  # Link 1 length
 
 # Constant link between L1 and L2 (RADIUS OF CIRCLE WHEN L1 IS ROTATED ALONG Z AXIS)
 right_linkConst = -9.094    # for right leg
-# left_linkConst = 9.094      # for left leg, opposite sign to right leg
+left_linkConst = 9.094      # for left leg, opposite sign to right leg
 
 L2 = 22     # Link 2 length
 L3 = 21.5   # Link 3 length
 
 right_reference_angles = np.array([0, 0, 0])
-# left_reference_angles = np.array([0, 0, 0])
+left_reference_angles = np.array([0, 0, 0])
 
 right_last_angles = np.array([0, 0, 0])
-# left_last_angles = np.array([0, 0, 0])
+left_last_angles = np.array([0, 0, 0])
 ref_updated = False
+
+def wrap_to_180(angle_deg):
+    # Wrap to [-180, 180)
+    angle = (angle_deg + 180) % 360 - 180
+    return angle
+
+def deadband(angle_deg, eps=1e-2):
+    return 0.0 if abs(angle_deg) < eps else angle_deg
+
+
 
 def send_array_to_motor(array, host='127.0.0.1', port=50000, timeout=2.0):
     """
@@ -86,14 +96,14 @@ def update(start_at, total_time, interval_time):
         print(f"Time: {cur_time:.2f}s, Target: ({x:.2f}, {y:.2f}, {z:.2f})")
         right_theta1, right_theta2, right_theta3 = ik.inverse_kinematics(x, y, z, L1, right_linkConst, L2, L3)
 
-        # x,y,z = anim.get_position(t=cur_time, total_time=total_time, leg='left')
-        # print(f"Time: {cur_time:.2f}s, Target: ({x:.2f}, {y:.2f}, {z:.2f})") 
-        # left_theta1, left_theta2, left_theta3 = ik.inverse_kinematics(x, y, z, L1, left_linkConst, L2, L3) 
+        x,y,z = anim.get_position(t=cur_time, total_time=total_time, leg='left')
+        print(f"Time: {cur_time:.2f}s, Target: ({x:.2f}, {y:.2f}, {z:.2f})") 
+        left_theta1, left_theta2, left_theta3 = ik.inverse_kinematics(x, y, z, L1, left_linkConst, L2, L3) 
 
         max_time = interval_time/1000.0  # Initially given delay
         if not ref_updated:
             right_reference_angles[:] = np.array([right_theta1, right_theta2, right_theta3])
-            # left_reference_angles[:] = np.array([left_theta1, left_theta2, left_theta3])
+            left_reference_angles[:] = np.array([left_theta1, left_theta2, left_theta3])
             ref_updated = True
             print("Reference angles set to:", np.degrees(right_reference_angles),) # np.degrees(left_reference_angles))
         else:
@@ -102,9 +112,9 @@ def update(start_at, total_time, interval_time):
             right_theta2 = right_theta2 - right_reference_angles[1]
             right_theta3 = right_theta3 - right_reference_angles[2]
 
-            # left_theta1 = left_theta1 - left_reference_angles[0]
-            # left_theta2 = left_theta2 - left_reference_angles[1]
-            # left_theta3 = left_theta3 - left_reference_angles[2]
+            left_theta1 = left_theta1 - left_reference_angles[0]
+            left_theta2 = left_theta2 - left_reference_angles[1]
+            left_theta3 = left_theta3 - left_reference_angles[2]
 
             # abs_diff
             # d1 = abs(np.degrees(right_theta1) - right_last_angles[1])
@@ -112,10 +122,19 @@ def update(start_at, total_time, interval_time):
             # d3 = abs(np.degrees(right_theta3) - right_last_angles[2]) 
 
             right_last_angles[:] = np.array([np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3)])
-            # left_last_angles[:] = np.array([np.degrees(left_theta1), np.degrees(left_theta2), np.degrees(left_theta3)])
+            left_last_angles[:] = np.array([np.degrees(left_theta1), np.degrees(left_theta2), np.degrees(left_theta3)])
+
+            r_deg1 = deadband(wrap_to_180(np.degrees(right_theta1)))
+            r_deg2 = deadband(wrap_to_180(np.degrees(right_theta2)))
+            r_deg3 = deadband(wrap_to_180(np.degrees(right_theta3)))
+            
+            l_deg1 = deadband(wrap_to_180(np.degrees(left_theta1)))
+            l_deg2 = deadband(wrap_to_180(np.degrees(left_theta2)))
+            l_deg3 = deadband(wrap_to_180(np.degrees(left_theta3)))
 
             # print(np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3))
-            destinations = np.array([np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3)]) # np.degrees(left_theta1), np.degrees(left_theta2), np.degrees(left_theta3)])
+            # destinations = np.array([r_deg1, r_deg2, r_deg3, l_deg1, l_deg2, l_deg3]) 
+            destinations = np.array([l_deg1, l_deg2, l_deg3])
             if send_array_to_motor(destinations, HOST, PORT):
                 print(f"✅ Sent: {destinations.tolist()}°")
             else:
