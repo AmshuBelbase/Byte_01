@@ -5,6 +5,8 @@ Socket listener runs in separate process with its own CPU core
 Motor control runs in main process
 """
 
+import queue
+
 import numpy as np
 import time
 import sys
@@ -110,7 +112,7 @@ def motor_can(motor_ids=[1], dest_queue=None):
     with open(config_file, 'r') as f:
         config = json.load(f)
 
-    can_interfaces = set() # Collect unique CAN interfaces from motor config
+    can_interfaces = set()                      # Collect unique CAN interfaces from motor config
 
     for motor_id in motor_ids:
         if str(motor_id) not in config['motors']:
@@ -119,8 +121,8 @@ def motor_can(motor_ids=[1], dest_queue=None):
         can_interfaces.add(config['motors'][str(motor_id)]['can'])
     
     print(f"Initializing shared CAN bus on {can_interfaces}...")
-    shared_bus = [None]*len(can_interfaces) # Support multiple interfaces if needed
-    bus_can_map = [None]*len(can_interfaces)  # Map can interface to bus index
+    shared_bus = [None]*len(can_interfaces)     # Support multiple interfaces if needed
+    bus_can_map = [None]*len(can_interfaces)    # Map can interface to bus index
     
     for i, can_name in enumerate(can_interfaces):
         print(f" - {can_name}")
@@ -210,7 +212,15 @@ def motor_can(motor_ids=[1], dest_queue=None):
                 if dest_queue:
                     try:
                         new_dest = dest_queue.get_nowait()
+                        result = []
+                        for i in range(0, len(new_dest), 3):
+                            chunk = list(new_dest[i:i+3])
+                            result += chunk + chunk  # repeat each chunk twice
+                        new_dest = np.array(result)
+                        print(f"[Motor Process] {len(new_dest)} New destinations from queue: {new_dest.tolist()}°")
+                    # except queue.Empty:
                     except:
+                        # print(f"[Motor Process] Queue is empty")
                         pass  # Queue empty
                 
                 if new_dest is not None and len(new_dest) == num_motors:
@@ -221,14 +231,20 @@ def motor_can(motor_ids=[1], dest_queue=None):
                         
                         move_active = True
                         print(f"[Motor Process] NEW MOVE: {src_deg.tolist()}° -> {dest_deg.tolist()}°")
-                
+                else:
+                    print("No new destination or invalid length, holding current position.")
+
                 # Execute active move
                 all_finished = True
                 if move_active:
                     targets_deg = np.zeros(num_motors)
 
                     for i, motor_id in enumerate(motor_ids):
-                        targets_deg[i] = dest_deg[i] * config['motors'][str(motor_id)]['gear_ratio'] # Apply gear ratio as specified in config
+                        # Apply gear ratio as specified in config
+                        targets_deg[i] = dest_deg[i] * config['motors'][str(motor_id)]['gear_ratio'] 
+
+                        # Apply flipping if specified in config
+                        targets_deg[i] = -targets_deg[i] if config['motors'][str(motor_id)]['flipped'] else targets_deg[i] 
                         
                         motors[motor_id].send_mit_command(
                             position=np.radians(targets_deg[i]), velocity=0.0, kp=KP[i], kd=KD[i], torque=0.0
@@ -306,8 +322,15 @@ if __name__ == '__main__':
     except RuntimeError:
         pass  # Already set, that's fine
 
-    motor_ids = [1,2,3,4,5,6,7,8,9,10,11,12]  # Example motor IDs for 4 legs with 3 motors each 
+    # motor_ids = [1,2,3,4,5,6,7,8,9,10,11,12]  # Example motor IDs for 4 legs with 3 motors each 
     # motor_ids = [4,10]
+
+    motor_ids = [] 
+
+    # motor_ids.extend([1,2,3])  # front left leg, can0
+    # motor_ids.extend([4,5,6])  # back left leg, can0
+    motor_ids.extend([7,8,9])  # front right leg, can1
+    motor_ids.extend([10,11,12])  # back right leg, can1
 
     # 1,2,3 - front left leg
     # 4,5,6 - back left leg
