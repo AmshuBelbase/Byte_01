@@ -39,7 +39,7 @@ def inverse_kinematics(x, y, z, L1, linkConst, L2, L3):
 
     # Calculate angle of points A and B from origin using atan2
     theta_A = np.arctan2(home_linkConst[1], home_linkConst[0])  # For A=(r,0), this is 0
-    theta_B = np.arctan2(T[1], T[0])
+    theta_B = np.arctan2(T[1], T[0]) # (y,x) order for atan2
     
     # Calculate angle difference in radians
     theta1 = theta_B - theta_A
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     L2 = 22  # Link 2 length
     L3 = 21.5  # Link 3 length
 
-    x, y, z = -9.094, 27, 6 # Target point
+    x, y, z = -9.094, 22, 6 # Target point
 
     print(x, y, z)
 

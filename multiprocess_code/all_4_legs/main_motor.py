@@ -167,8 +167,8 @@ def motor_can(motor_ids=[1], dest_queue=None):
             motor.set_zero_position(permanent=False)
             print(f"Motor ID {motor_id} zero position set")
         
-        print("Waiting 3 seconds...")
-        time.sleep(3)
+        print("Waiting 10 seconds...")
+        time.sleep(10)
 
 
         print("Setup complete. ✓")
@@ -329,8 +329,8 @@ if __name__ == '__main__':
 
     motor_ids.extend([1,2,3])  # front left leg, can0
     motor_ids.extend([4,5,6])  # back left leg, can0
-    # motor_ids.extend([7,8,9])  # front right leg, can1
-    # motor_ids.extend([10,11,12])  # back right leg, can1
+    motor_ids.extend([7,8,9])  # front right leg, can1
+    motor_ids.extend([10,11,12])  # back right leg, can1
 
     # 1,2,3 - front left leg
     # 4,5,6 - back left leg

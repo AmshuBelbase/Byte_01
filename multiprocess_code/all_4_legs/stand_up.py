@@ -92,20 +92,20 @@ def update(start_at, total_time, interval_time):
     while time.time() - start_at < total_time:
         cur_time = time.time() - start_at
 
-        x,y,z = anim.get_position(t=cur_time, total_time=total_time, leg='right')
-        print(f"Time: {cur_time:.2f}s, Target: ({x:.2f}, {y:.2f}, {z:.2f})")
-        right_theta1, right_theta2, right_theta3 = ik.inverse_kinematics(x, y, z, L1, right_linkConst, L2, L3)
-
         x,y,z = anim.get_position(t=cur_time, total_time=total_time, leg='left')
         print(f"Time: {cur_time:.2f}s, Target: ({x:.2f}, {y:.2f}, {z:.2f})") 
         left_theta1, left_theta2, left_theta3 = ik.inverse_kinematics(x, y, z, L1, left_linkConst, L2, L3) 
+
+        x,y,z = anim.get_position(t=cur_time, total_time=total_time, leg='right')
+        print(f"Time: {cur_time:.2f}s, Target: ({x:.2f}, {y:.2f}, {z:.2f})")
+        right_theta1, right_theta2, right_theta3 = ik.inverse_kinematics(x, y, z, L1, right_linkConst, L2, L3)
 
         max_time = interval_time/1000.0  # Initially given delay
         if not ref_updated:
             right_reference_angles[:] = np.array([right_theta1, right_theta2, right_theta3])
             left_reference_angles[:] = np.array([left_theta1, left_theta2, left_theta3])
             ref_updated = True
-            print("Reference angles set to:", np.degrees(right_reference_angles),) # np.degrees(left_reference_angles))
+            print("Reference angles set to:", np.degrees(left_reference_angles), np.degrees(right_reference_angles))
         else:
             # print(np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3))
             right_theta1 = right_theta1 - right_reference_angles[0]
@@ -133,8 +133,8 @@ def update(start_at, total_time, interval_time):
             l_deg3 = deadband(wrap_to_180(np.degrees(left_theta3)))
 
             # print(np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3))
-            # destinations = np.array([r_deg1, r_deg2, r_deg3, l_deg1, l_deg2, l_deg3]) 
-            destinations = np.array([l_deg1, l_deg2, l_deg3])
+            destinations = np.array([l_deg1, l_deg2, l_deg3, r_deg1, r_deg2, r_deg3]) 
+            # destinations = np.array([l_deg1, l_deg2, l_deg3])
             if send_array_to_motor(destinations, HOST, PORT):
                 print(f"✅ Sent: {destinations.tolist()}°")
             else:
