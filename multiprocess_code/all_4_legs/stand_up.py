@@ -40,8 +40,6 @@ def wrap_to_180(angle_deg):
 def deadband(angle_deg, eps=1e-2):
     return 0.0 if abs(angle_deg) < eps else angle_deg
 
-
-
 def send_array_to_motor(array, host='127.0.0.1', port=50000, timeout=2.0):
     """
     Send numpy array to motor controller via socket
@@ -89,57 +87,59 @@ def on_complete(anim):
 def update(start_at, total_time, interval_time):
     global ref_updated
     global right_reference_angles, left_reference_angles
+
+    # set right and left reference angles only once at the start of the animation
+    right_reference_angles[:] = np.array([ik.inverse_kinematics(x, y, z, L1, left_linkConst, L2, L3) for x,y,z in [anim.get_position(t=0, total_time=total_time, leg='right')]])
+    left_reference_angles[:] = np.array([ik.inverse_kinematics(x, y, z, L1, left_linkConst, L2, L3) for x,y,z in [anim.get_position(t=0, total_time=total_time, leg='left')]])
+    ref_updated = True
+    print("Reference angles set to:", np.degrees(left_reference_angles), np.degrees(right_reference_angles))
+    
     while time.time() - start_at < total_time:
         cur_time = time.time() - start_at
 
         x,y,z = anim.get_position(t=cur_time, total_time=total_time, leg='left')
         print(f"Time: {cur_time:.2f}s, Target: ({x:.2f}, {y:.2f}, {z:.2f})") 
-        left_theta1, left_theta2, left_theta3 = ik.inverse_kinematics(x, y, z, L1, left_linkConst, L2, L3) 
+        left_theta1, left_theta2, left_theta3 =  ik.inverse_kinematics(x, y, z, L1, left_linkConst, L2, L3)
 
         x,y,z = anim.get_position(t=cur_time, total_time=total_time, leg='right')
         print(f"Time: {cur_time:.2f}s, Target: ({x:.2f}, {y:.2f}, {z:.2f})")
         right_theta1, right_theta2, right_theta3 = ik.inverse_kinematics(x, y, z, L1, right_linkConst, L2, L3)
 
-        max_time = interval_time/1000.0  # Initially given delay
-        if not ref_updated:
-            right_reference_angles[:] = np.array([right_theta1, right_theta2, right_theta3])
-            left_reference_angles[:] = np.array([left_theta1, left_theta2, left_theta3])
-            ref_updated = True
-            print("Reference angles set to:", np.degrees(left_reference_angles), np.degrees(right_reference_angles))
+        max_time = interval_time/1000.0  # Initially given delay 
+        # print(np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3))
+        right_theta1 = right_theta1 - right_reference_angles[0]
+        right_theta2 = right_theta2 - right_reference_angles[1]
+        right_theta3 = right_theta3 - right_reference_angles[2]
+
+        left_theta1 = left_theta1 - left_reference_angles[0]
+        left_theta2 = left_theta2 - left_reference_angles[1]
+        left_theta3 = left_theta3 - left_reference_angles[2]
+
+        # abs_diff
+        # d1 = abs(np.degrees(right_theta1) - right_last_angles[1])
+        # d2 = abs(np.degrees(right_theta2) - right_last_angles[0])
+        # d3 = abs(np.degrees(right_theta3) - right_last_angles[2]) 
+
+        right_last_angles[:] = np.array([np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3)])
+        left_last_angles[:] = np.array([np.degrees(left_theta1), np.degrees(left_theta2), np.degrees(left_theta3)])
+
+        r_deg1 = deadband(wrap_to_180(np.degrees(right_theta1)))
+        r_deg2 = deadband(wrap_to_180(np.degrees(right_theta2)))
+        r_deg3 = deadband(wrap_to_180(np.degrees(right_theta3)))
+        
+        l_deg1 = deadband(wrap_to_180(np.degrees(left_theta1)))
+        l_deg2 = deadband(wrap_to_180(np.degrees(left_theta2)))
+        l_deg3 = deadband(wrap_to_180(np.degrees(left_theta3)))
+
+        # print(np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3))
+        destinations = np.array([l_deg1, l_deg2, l_deg3, r_deg1, r_deg2, r_deg3]) 
+        # destinations = np.array([l_deg1, l_deg2, l_deg3])
+        if send_array_to_motor(destinations, HOST, PORT):
+            print(f"✅ Sent: {destinations.tolist()}°")
         else:
-            # print(np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3))
-            right_theta1 = right_theta1 - right_reference_angles[0]
-            right_theta2 = right_theta2 - right_reference_angles[1]
-            right_theta3 = right_theta3 - right_reference_angles[2]
+            print(f"📤 Send failed - {destinations.tolist()}°") 
+            print("⚠️  Send failed - receiver may have disconnected")
 
-            left_theta1 = left_theta1 - left_reference_angles[0]
-            left_theta2 = left_theta2 - left_reference_angles[1]
-            left_theta3 = left_theta3 - left_reference_angles[2]
-
-            # abs_diff
-            # d1 = abs(np.degrees(right_theta1) - right_last_angles[1])
-            # d2 = abs(np.degrees(right_theta2) - right_last_angles[0])
-            # d3 = abs(np.degrees(right_theta3) - right_last_angles[2]) 
-
-            right_last_angles[:] = np.array([np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3)])
-            left_last_angles[:] = np.array([np.degrees(left_theta1), np.degrees(left_theta2), np.degrees(left_theta3)])
-
-            r_deg1 = deadband(wrap_to_180(np.degrees(right_theta1)))
-            r_deg2 = deadband(wrap_to_180(np.degrees(right_theta2)))
-            r_deg3 = deadband(wrap_to_180(np.degrees(right_theta3)))
-            
-            l_deg1 = deadband(wrap_to_180(np.degrees(left_theta1)))
-            l_deg2 = deadband(wrap_to_180(np.degrees(left_theta2)))
-            l_deg3 = deadband(wrap_to_180(np.degrees(left_theta3)))
-
-            # print(np.degrees(right_theta1), np.degrees(right_theta2), np.degrees(right_theta3))
-            destinations = np.array([l_deg1, l_deg2, l_deg3, r_deg1, r_deg2, r_deg3]) 
-            # destinations = np.array([l_deg1, l_deg2, l_deg3])
-            if send_array_to_motor(destinations, HOST, PORT):
-                print(f"✅ Sent: {destinations.tolist()}°")
-            else:
-                print(f"📤 Send failed - {destinations.tolist()}°") 
-                print("⚠️  Send failed - receiver may have disconnected")
         print(f"Waiting for {max_time:.2f} s before next command...")
         time.sleep(max_time)  # In seconds
 
@@ -170,7 +170,7 @@ if __name__ == '__main__':
                 exit(1)
             print("✅ Connected on retry!")
 
-        destinations = np.array([0.0, 0.0, 0.0]) #, 0.0, 0.0, 0.0])  # Use np.array from start
+        destinations = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])  # Use np.array from start
         print(f"📤 First Message Sending: {destinations.tolist()}°") 
         if send_array_to_motor(destinations, HOST, PORT):
             print(f"✅ First Message Sent: {destinations.tolist()}°")

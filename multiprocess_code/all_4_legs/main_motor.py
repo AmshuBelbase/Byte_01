@@ -167,8 +167,8 @@ def motor_can(motor_ids=[1], dest_queue=None):
             motor.set_zero_position(permanent=False)
             print(f"Motor ID {motor_id} zero position set")
         
-        print("Waiting 10 seconds...")
-        time.sleep(10)
+        print("Waiting 3 seconds...")
+        time.sleep(3)
 
 
         print("Setup complete. ✓")
@@ -253,7 +253,7 @@ def motor_can(motor_ids=[1], dest_queue=None):
                         if t % 1.0 < 0.02: 
                             print(f"SENT t = {t:.1f} Motor {motor_id}: target={targets_deg[i]:.2f}°")
 
-                        if abs(current_positions_deg[i] - dest_deg[i]) > 0.5:  # 0.5° tolerance
+                        if abs(current_positions_deg[i] - targets_deg[i]) > 0.5:  # 0.5° tolerance
                             all_finished = False
                                         
                     # Status every 1s
