@@ -14,9 +14,9 @@ import can
 from ak60_v3_control import AK60V3Motor
 
 # ── Tuning ─────────────────────────────────────────────────
-KP              = 150.0
+KP              = 200.0
 KD              = 1.5
-LOOP_HZ         = 200
+LOOP_HZ         = 100
 LOOP_DT         = 1.0 / LOOP_HZ
 MIN_MOVE_TIME   = 1.0
 DEG_PER_SEC     = 0.0005
@@ -27,26 +27,26 @@ TRIGGER_CONFIRM = 0.3   # s
 CAN_CONFIG = {
     'can0': {
         'phase1': [          # Back Left leg: M5 → M6 → M4
-            (5, -60.0, -10.0, 4.0,  70.0),
-            (6,  10.0,  10.0, 5.0, -38.0),
-            (4,  60.0,  10.0, 4.0, -60.0),
+            (5, -60.0, -5.0, 3.0,  70.0),
+            (6,  10.0,  5.0, 5.0, -38.0),
+            (4,  60.0,  5.0, 4.0, -60.0),
         ],
         'phase2': [          # Front Left leg: M2 → M3 → M1
-            (2, -60.0, -10.0, 4.0,  70.0),
-            (3,  10.0,  10.0, 5.0, -38.0),
-            (1,  60.0,  10.0, 4.0, -60.0),
+            (2, -60.0, -5.0, 3.0,  70.0),
+            (3,  10.0,  5.0, 5.0, -38.0),
+            (1,  60.0,  5.0, 4.0, -60.0),
         ],
     },
     'can1': {
         'phase1': [          # Front Right leg: M8 → M9 → M7
-            (8,  60.0,  10.0, 4.0, -70.0),
-            (9, -10.0, -10.0, 5.0,  38.0),
-            (7, -60.0, -10.0, 4.0,  60.0),
+            (8,  60.0,  5.0, 3.0, -70.0),
+            (9, -10.0, -5.0, 5.0,  38.0),
+            (7, -60.0, -5.0, 4.0,  60.0),
         ],
         'phase2': [          # Back Right leg: M11 → M12 → M10
-            (11,  60.0,  10.0, 4.0, -70.0),
-            (12, -10.0, -10.0, 5.0,  38.0),
-            (10, -60.0, -10.0, 4.0,  60.0),
+            (11,  60.0,  5.0, 3.0, -70.0),
+            (12, -10.0, -5.0, 5.0,  38.0),
+            (10, -60.0, -5.0, 4.0,  60.0),
         ],
     },
 }
@@ -81,10 +81,13 @@ class MotorUnit:
         self.motor.set_zero_position()
 
     def read_feedback(self):
-        if self.motor.read_feedback(timeout=0.003):
+        if self.motor.read_feedback(timeout=0.01):
             self.position    = np.degrees(self.motor.position)
             self.current     = abs(self.motor.current)
             self.temperature = self.motor.temperature
+        else:
+            # print(f"  M{self.motor_id} feedback read TIMEOUT!")
+            pass
 
     def get_eased_position(self):
         if not self.move_active or self.move_start is None:
