@@ -414,7 +414,7 @@ def run_post_homing_live_control(
                 live_cmd_deg[motor_id] = limit_target_step(
                     current_cmd_deg=live_cmd_deg[motor_id],
                     requested_deg=last_live_targets_deg[motor_id],
-                    max_deg_per_s=MAX_LIVE_DEG_PER_S,
+                    max_deg_per_s=MAX_LIVE_DEG_PER_S*motor_config[motor_id]["gear_ratio"],  #CHANGED BY DAN(* motor_config[motor_id]["gear_ratio"])
                     dt=tuning.loop_dt,
                 )
 
