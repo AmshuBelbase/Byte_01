@@ -26,6 +26,10 @@ MotorCommandConfig = Dict[int, Dict[str, float | bool]]
 
 MAX_LIVE_DEG_PER_S = 50.0
 
+CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_currents.csv"
+CURRENT_LOG_HZ = 5.0
+CURRENT_LOG_DT = 1.0 / CURRENT_LOG_HZ
+
 
 CAN_CONFIG: Dict[str, Dict[str, List[HomingMotorConfig]]] = {
     "can0": {
@@ -282,6 +286,61 @@ def initialize_live_command_state(
         live_cmd_deg[motor_id] = st.position_deg
 
     return live_cmd_deg
+
+
+def current_logger_thread_entry(
+    rt0: BusRuntime,
+    rt1: BusRuntime,
+    stop_event: threading.Event,
+    log_path: str = CURRENT_LOG_PATH,
+    log_hz: float = CURRENT_LOG_HZ,
+) -> None:
+    """
+    Reads current (Amps) from all 12 motors at `log_hz` Hz and appends
+    every sample as a CSV row to `log_path`.
+
+    CSV columns:
+        timestamp_s, m1_a, m2_a, ..., m12_a
+    """
+    log_dt = 1.0 / log_hz
+    motor_ids = list(range(1, 13))
+
+    try:
+        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+            # Write header only if the file is empty / new
+            fh.seek(0, 2)
+            if fh.tell() == 0:
+                header = "timestamp_s," + ",".join(f"m{i}_a" for i in motor_ids)
+                fh.write(header + "\n")
+
+            print(
+                f"[CurrentLogger] Logging {log_hz:.0f} Hz motor currents -> {log_path}",
+                flush=True,
+            )
+
+            while not stop_event.is_set():
+                t_start = time.monotonic()
+                ts = time.time()
+
+                currents: List[float] = []
+                for motor_id in motor_ids:
+                    runtime = runtime_for_motor_id(motor_id, rt0, rt1)
+                    try:
+                        state = runtime.get_state_copy(motor_id)
+                        currents.append(round(state.current_A, 4))
+                    except Exception:
+                        currents.append(float("nan"))
+
+                row = f"{ts:.4f}," + ",".join(str(c) for c in currents)
+                fh.write(row + "\n")
+
+                elapsed = time.monotonic() - t_start
+                sleep_for = log_dt - elapsed
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+
+    except Exception as exc:
+        print(f"[CurrentLogger] Fatal error: {exc}", flush=True)
 
 
 def socket_listener_process(
@@ -569,6 +628,17 @@ def main():
         print(f"\n📄 Loading motor command config from {MOTOR_CONFIG_PATH}...")
         motor_config = load_motor_command_config(MOTOR_CONFIG_PATH)
         print("✅ Motor command config loaded.")
+
+        current_log_thread = threading.Thread(
+            target=current_logger_thread_entry,
+            args=(rt0, rt1, stop_event),
+            daemon=True,
+            name="CurrentLogger",
+        )
+        current_log_thread.start()
+        print(
+            f"📊 Motor current logger started at {CURRENT_LOG_HZ:.0f} Hz -> {CURRENT_LOG_PATH}"
+        )
 
         live_queue = mp.Queue(maxsize=LIVE_QUEUE_MAXSIZE)
         live_socket_stop = mp.Event()

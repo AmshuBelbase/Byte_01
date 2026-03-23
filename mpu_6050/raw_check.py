@@ -11,8 +11,8 @@ bus = smbus2.SMBus(1)
 bus.write_byte_data(MPU_ADDR, PWR_MGMT_1, 0)
 
 # ===== CALIBRATION VALUES =====
-ACCEL_BIAS = [0.0269, 0.0111, 0.0019]
-GYRO_BIAS  = [-5.1484, 1.4966, 0.2991]
+ACCEL_BIAS = [-0.0823, 0.0097, -0.0068]
+GYRO_BIAS  = [-5.0491, 1.4216, 0.4049]
 # ===========================================
 
 def read_word(reg):
