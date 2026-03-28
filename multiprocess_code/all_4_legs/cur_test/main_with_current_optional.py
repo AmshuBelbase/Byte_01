@@ -26,6 +26,8 @@ MotorCommandConfig = Dict[int, Dict[str, float | bool]]
 
 MAX_LIVE_DEG_PER_S = 50.0
 
+CALIBRATION_REQUIRED = False  # Set to False to skip homing and go straight to live control
+
 CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_currents.csv"
 CURRENT_LOG_HZ = 5.0
 CURRENT_LOG_DT = 1.0 / CURRENT_LOG_HZ
@@ -486,10 +488,13 @@ def main():
     time.sleep(3)
     print("=" * 70)
     print("🤖 AK60 | 4-LEG HOMING | 12 MOTORS | 2 CAN BUSES")
-    print("   Phase 1: Front Right (can1: M8→M9→M7)")
-    print("            Back Left   (can0: M5→M6→M4)  ← simultaneous")
-    print("   Phase 2: Back Right  (can1: M11→M12→M10)")
-    print("            Front Left  (can0: M2→M3→M1)  ← simultaneous")
+    if CALIBRATION_REQUIRED:
+        print("   Phase 1: Front Right (can1: M8→M9→M7)")
+        print("            Back Left   (can0: M5→M6→M4)  ← simultaneous")
+        print("   Phase 2: Back Right  (can1: M11→M12→M10)")
+        print("            Front Left  (can0: M2→M3→M1)  ← simultaneous")
+    else:
+        print("   ⏩ Homing skipped (CALIBRATION_REQUIRED=False)")
     print("   Final:    Post-homing live control with grouped leg socket receiver process")
     print("=" * 70)
 
@@ -582,48 +587,64 @@ def main():
             ctrl1.send_idle_hold_once()
             time.sleep(tuning.loop_dt)
 
-        print("🚀 Starting phase 1 on both CAN buses...\n")
+        if CALIBRATION_REQUIRED:
+            print("🚀 Starting phase 1 on both CAN buses...\n")
 
-        t0 = threading.Thread(
-            target=controller_thread_entry,
-            args=(
-                ctrl0,
-                can0_phase1_done,
-                can1_phase1_done,
-                can0_phase2_done,
-                final_hold_takeover,
-                stop_event,
-                errors,
-            ),
-            daemon=True,
-        )
-        t1 = threading.Thread(
-            target=controller_thread_entry,
-            args=(
-                ctrl1,
-                can1_phase1_done,
-                can0_phase1_done,
-                can1_phase2_done,
-                final_hold_takeover,
-                stop_event,
-                errors,
-            ),
-            daemon=True,
-        )
-        t0.start()
-        t1.start()
+            t0 = threading.Thread(
+                target=controller_thread_entry,
+                args=(
+                    ctrl0,
+                    can0_phase1_done,
+                    can1_phase1_done,
+                    can0_phase2_done,
+                    final_hold_takeover,
+                    stop_event,
+                    errors,
+                ),
+                daemon=True,
+            )
+            t1 = threading.Thread(
+                target=controller_thread_entry,
+                args=(
+                    ctrl1,
+                    can1_phase1_done,
+                    can0_phase1_done,
+                    can1_phase2_done,
+                    final_hold_takeover,
+                    stop_event,
+                    errors,
+                ),
+                daemon=True,
+            )
+            t0.start()
+            t1.start()
 
-        while not stop_event.is_set():
+            while not stop_event.is_set():
+                if errors:
+                    raise RuntimeError(" | ".join(errors))
+                if can0_phase2_done.is_set() and can1_phase2_done.is_set():
+                    break
+                time.sleep(tuning.loop_dt)
+
             if errors:
                 raise RuntimeError(" | ".join(errors))
 
-            if can0_phase2_done.is_set() and can1_phase2_done.is_set():
-                break
+            for _ in range(5):
+                ctrl0.hold_all_once()
+                ctrl1.hold_all_once()
+                time.sleep(tuning.loop_dt)
 
-            time.sleep(tuning.loop_dt)
+            final_hold_takeover.set()
 
-        if errors:
-            raise RuntimeError(" | ".join(errors))
+            t0.join()
+            t1.join()
+
+            if errors:
+                raise RuntimeError(" | ".join(errors))
+
+        else:
+            print("⏩ Skipping homing — CALIBRATION_REQUIRED=False. Proceeding to live control...")
+            final_hold_takeover.set()
 
         print(f"\n📄 Loading motor command config from {MOTOR_CONFIG_PATH}...")
         motor_config = load_motor_command_config(MOTOR_CONFIG_PATH)
@@ -649,19 +670,6 @@ def main():
         )
         live_socket_process.start()
         print(f"📡 Socket receiver process started with PID {live_socket_process.pid}.")
-
-        for _ in range(5):
-            ctrl0.hold_all_once()
-            ctrl1.hold_all_once()
-            time.sleep(tuning.loop_dt)
-
-        final_hold_takeover.set()
-
-        t0.join()
-        t1.join()
-
-        if errors:
-            raise RuntimeError(" | ".join(errors))
 
         run_post_homing_live_control(
             ctrl0=ctrl0,

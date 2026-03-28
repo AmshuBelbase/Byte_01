@@ -26,9 +26,15 @@ MotorCommandConfig = Dict[int, Dict[str, float | bool]]
 
 MAX_LIVE_DEG_PER_S = 50.0
 
+CALIBRATION_REQUIRED = True  # Set to False to skip homing and go straight to live control
+
 CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_currents.csv"
 CURRENT_LOG_HZ = 5.0
 CURRENT_LOG_DT = 1.0 / CURRENT_LOG_HZ
+
+TEMP_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_temps.csv"
+TEMP_LOG_HZ = 5.0
+TEMP_LOG_DT = 1.0 / TEMP_LOG_HZ
 
 
 CAN_CONFIG: Dict[str, Dict[str, List[HomingMotorConfig]]] = {
@@ -41,7 +47,7 @@ CAN_CONFIG: Dict[str, Dict[str, List[HomingMotorConfig]]] = {
         "phase2": [
             HomingMotorConfig(2, -60.0, -1.0, 4.0, 65.0),
             HomingMotorConfig(3, 10.0, 1.0, 4.5, -38.0),#4th val from 5 changed by dan
-            HomingMotorConfig(1, 60.0, 1.0, 4.5, -60.0),#4th val from 4 changed by dan
+            HomingMotorConfig(1, 60.0, 1.0, 4.0, -60.0),#4th val from 4 changed by dan
         ],
     },
     "can1": {
@@ -343,6 +349,61 @@ def current_logger_thread_entry(
         print(f"[CurrentLogger] Fatal error: {exc}", flush=True)
 
 
+def temp_logger_thread_entry(
+    rt0: BusRuntime,
+    rt1: BusRuntime,
+    stop_event: threading.Event,
+    log_path: str = TEMP_LOG_PATH,
+    log_hz: float = TEMP_LOG_HZ,
+) -> None:
+    """
+    Reads temperature (°C) from all 12 motors at `log_hz` Hz and appends
+    every sample as a CSV row to `log_path`.
+
+    CSV columns:
+        timestamp_s, m1_c, m2_c, ..., m12_c
+    """
+    log_dt = 1.0 / log_hz
+    motor_ids = list(range(1, 13))
+
+    try:
+        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+            # Write header only if the file is empty / new
+            fh.seek(0, 2)
+            if fh.tell() == 0:
+                header = "timestamp_s," + ",".join(f"m{i}_c" for i in motor_ids)
+                fh.write(header + "\n")
+
+            print(
+                f"[TempLogger] Logging {log_hz:.0f} Hz motor temperatures -> {log_path}",
+                flush=True,
+            )
+
+            while not stop_event.is_set():
+                t_start = time.monotonic()
+                ts = time.time()
+
+                temps: List[float] = []
+                for motor_id in motor_ids:
+                    runtime = runtime_for_motor_id(motor_id, rt0, rt1)
+                    try:
+                        state = runtime.get_state_copy(motor_id)
+                        temps.append(round(state.temperature_C, 4))
+                    except Exception:
+                        temps.append(float("nan"))
+
+                row = f"{ts:.4f}," + ",".join(str(t) for t in temps)
+                fh.write(row + "\n")
+
+                elapsed = time.monotonic() - t_start
+                sleep_for = log_dt - elapsed
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+
+    except Exception as exc:
+        print(f"[TempLogger] Fatal error: {exc}", flush=True)
+
+
 def socket_listener_process(
     dest_queue: MpQueue,
     stop_event: MpEvent,
@@ -486,10 +547,13 @@ def main():
     time.sleep(3)
     print("=" * 70)
     print("🤖 AK60 | 4-LEG HOMING | 12 MOTORS | 2 CAN BUSES")
-    print("   Phase 1: Front Right (can1: M8→M9→M7)")
-    print("            Back Left   (can0: M5→M6→M4)  ← simultaneous")
-    print("   Phase 2: Back Right  (can1: M11→M12→M10)")
-    print("            Front Left  (can0: M2→M3→M1)  ← simultaneous")
+    if CALIBRATION_REQUIRED:
+        print("   Phase 1: Front Right (can1: M8→M9→M7)")
+        print("            Back Left   (can0: M5→M6→M4)  ← simultaneous")
+        print("   Phase 2: Back Right  (can1: M11→M12→M10)")
+        print("            Front Left  (can0: M2→M3→M1)  ← simultaneous")
+    else:
+        print("   ⏩ Homing skipped (CALIBRATION_REQUIRED=False)")
     print("   Final:    Post-homing live control with grouped leg socket receiver process")
     print("=" * 70)
 
@@ -582,48 +646,64 @@ def main():
             ctrl1.send_idle_hold_once()
             time.sleep(tuning.loop_dt)
 
-        print("🚀 Starting phase 1 on both CAN buses...\n")
+        if CALIBRATION_REQUIRED:
+            print("🚀 Starting phase 1 on both CAN buses...\n")
 
-        t0 = threading.Thread(
-            target=controller_thread_entry,
-            args=(
-                ctrl0,
-                can0_phase1_done,
-                can1_phase1_done,
-                can0_phase2_done,
-                final_hold_takeover,
-                stop_event,
-                errors,
-            ),
-            daemon=True,
-        )
-        t1 = threading.Thread(
-            target=controller_thread_entry,
-            args=(
-                ctrl1,
-                can1_phase1_done,
-                can0_phase1_done,
-                can1_phase2_done,
-                final_hold_takeover,
-                stop_event,
-                errors,
-            ),
-            daemon=True,
-        )
-        t0.start()
-        t1.start()
+            t0 = threading.Thread(
+                target=controller_thread_entry,
+                args=(
+                    ctrl0,
+                    can0_phase1_done,
+                    can1_phase1_done,
+                    can0_phase2_done,
+                    final_hold_takeover,
+                    stop_event,
+                    errors,
+                ),
+                daemon=True,
+            )
+            t1 = threading.Thread(
+                target=controller_thread_entry,
+                args=(
+                    ctrl1,
+                    can1_phase1_done,
+                    can0_phase1_done,
+                    can1_phase2_done,
+                    final_hold_takeover,
+                    stop_event,
+                    errors,
+                ),
+                daemon=True,
+            )
+            t0.start()
+            t1.start()
 
-        while not stop_event.is_set():
+            while not stop_event.is_set():
+                if errors:
+                    raise RuntimeError(" | ".join(errors))
+                if can0_phase2_done.is_set() and can1_phase2_done.is_set():
+                    break
+                time.sleep(tuning.loop_dt)
+
             if errors:
                 raise RuntimeError(" | ".join(errors))
 
-            if can0_phase2_done.is_set() and can1_phase2_done.is_set():
-                break
+            for _ in range(5):
+                ctrl0.hold_all_once()
+                ctrl1.hold_all_once()
+                time.sleep(tuning.loop_dt)
 
-            time.sleep(tuning.loop_dt)
+            final_hold_takeover.set()
 
-        if errors:
-            raise RuntimeError(" | ".join(errors))
+            t0.join()
+            t1.join()
+
+            if errors:
+                raise RuntimeError(" | ".join(errors))
+
+        else:
+            print("⏩ Skipping homing — CALIBRATION_REQUIRED=False. Proceeding to live control...")
+            final_hold_takeover.set()
 
         print(f"\n📄 Loading motor command config from {MOTOR_CONFIG_PATH}...")
         motor_config = load_motor_command_config(MOTOR_CONFIG_PATH)
@@ -640,6 +720,17 @@ def main():
             f"📊 Motor current logger started at {CURRENT_LOG_HZ:.0f} Hz -> {CURRENT_LOG_PATH}"
         )
 
+        temp_log_thread = threading.Thread(
+            target=temp_logger_thread_entry,
+            args=(rt0, rt1, stop_event),
+            daemon=True,
+            name="TempLogger",
+        )
+        temp_log_thread.start()
+        print(
+            f"🌡️  Motor temperature logger started at {TEMP_LOG_HZ:.0f} Hz -> {TEMP_LOG_PATH}"
+        )
+
         live_queue = mp.Queue(maxsize=LIVE_QUEUE_MAXSIZE)
         live_socket_stop = mp.Event()
         live_socket_process = mp.Process(
@@ -649,19 +740,6 @@ def main():
         )
         live_socket_process.start()
         print(f"📡 Socket receiver process started with PID {live_socket_process.pid}.")
-
-        for _ in range(5):
-            ctrl0.hold_all_once()
-            ctrl1.hold_all_once()
-            time.sleep(tuning.loop_dt)
-
-        final_hold_takeover.set()
-
-        t0.join()
-        t1.join()
-
-        if errors:
-            raise RuntimeError(" | ".join(errors))
 
         run_post_homing_live_control(
             ctrl0=ctrl0,

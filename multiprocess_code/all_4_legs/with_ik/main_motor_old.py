@@ -75,25 +75,20 @@ def socket_listener_process(dest_queue, port=50000, host='127.0.0.1'):
         while True:
             try:
                 conn, addr = server.accept()
-                conn.settimeout(5.0) 
                 
                 data = b''
                 while True:
-                    try:
-                        chunk = conn.recv(4096)
-                    except socket.timeout:
-                        break
+                    chunk = conn.recv(4096)
                     if not chunk:
                         break
                     data += chunk
                 
-                try:
-                    if data:
-                        array = pickle.loads(data)
-                        dest_queue.put(array)
-                        print(f"[Socket Process] Received: {array.tolist()}°")
-                finally:
-                    conn.close()
+                if data:
+                    array = pickle.loads(data)
+                    dest_queue.put(array)
+                    print(f"[Socket Process] Received: {array.tolist()}°")
+                
+                conn.close()
                 
             except Exception as e:
                 print(f"[Socket Process] Error: {e}")
@@ -229,15 +224,16 @@ def motor_can(motor_ids=[1], dest_queue=None):
                         # print(f"[Motor Process] Queue is empty")
                         pass  # Queue empty
                 
-                if new_dest is not None:
-                    if len(new_dest) == num_motors:
-                        if not np.array_equal(new_dest, current_dest_deg):
-                            src_deg = current_positions_deg.copy()
-                            dest_deg = new_dest.copy()
-                            move_active = True
-                            print(f"[Motor Process] NEW MOVE: {src_deg.tolist()}° -> {dest_deg.tolist()}°")
-                    else:
-                        print(f"[Motor Process] Invalid length {len(new_dest)}, expected {num_motors}")
+                if new_dest is not None and len(new_dest) == num_motors:
+                    if not np.array_equal(new_dest, current_dest_deg):
+                        # New move: current pos -> new dest
+                        src_deg = current_positions_deg.copy()
+                        dest_deg = new_dest.copy()
+                        
+                        move_active = True
+                        print(f"[Motor Process] NEW MOVE: {src_deg.tolist()}° -> {dest_deg.tolist()}°")
+                else:
+                    print("No new destination or invalid length, holding current position.")
 
                 # Execute active move
                 all_finished = True
@@ -332,10 +328,10 @@ if __name__ == '__main__':
 
     motor_ids = [] 
 
-    motor_ids.extend([1,2,3])  # front left leg, can0
-    motor_ids.extend([4,5,6])  # back left leg, can0
+    #motor_ids.extend([1,2,3])  # front left leg, can0
+    #motor_ids.extend([4,5,6])  # back left leg, can0
     motor_ids.extend([7,8,9])  # front right leg, can1
-    motor_ids.extend([10,11,12])  # back right leg, can1
+    #motor_ids.extend([10,11,12])  # back right leg, can1
 
     # 1,2,3 - front left leg
     # 4,5,6 - back left leg

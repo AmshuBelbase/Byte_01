@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#temperature_C for temperature
+# temperature_C for temperature
 import json
 import multiprocessing as mp
 import pickle
@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from can_runtime import BusRuntime
 from homing_controller import BusHomingController, ControlTuning, HomingMotorConfig
+from inverse_kinematics import compute_ik_offsets, ik_to_motor_deg
 
 
 LIVE_SOCKET_HOST = "127.0.0.1"
@@ -20,40 +21,54 @@ LIVE_SOCKET_PORT = 50000
 LIVE_QUEUE_MAXSIZE = 1
 MOTOR_CONFIG_PATH = "motor_config.json"
 
+
 LEG_ORDER: Tuple[str, str, str, str] = ("fl", "bl", "fr", "br")
 LegPayload = Dict[str, List[float]]
 MotorCommandConfig = Dict[int, Dict[str, float | bool]]
 
-MAX_LIVE_DEG_PER_S = 50.0
+LEG_TO_MOTOR_IDS: Dict[str, List[int]] = {
+    "fl": [1,  2,  3],
+    "bl": [4,  5,  6],
+    "fr": [7,  8,  9],
+    "br": [10, 11, 12],
+}
+
+MAX_LIVE_DEG_PER_S = 150.0
+
+CALIBRATION_REQUIRED = False
 
 CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_currents.csv"
 CURRENT_LOG_HZ = 5.0
 CURRENT_LOG_DT = 1.0 / CURRENT_LOG_HZ
 
+TEMP_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_temps.csv"
+TEMP_LOG_HZ = 5.0
+TEMP_LOG_DT = 1.0 / TEMP_LOG_HZ
+
 
 CAN_CONFIG: Dict[str, Dict[str, List[HomingMotorConfig]]] = {
     "can0": {
         "phase1": [
-            HomingMotorConfig(5, -60.0, -1.0, 4.0, 65.0),
-            HomingMotorConfig(6, 10.0, 1.0, 5.0, -38.0),
-            HomingMotorConfig(4, 60.0, 1.0, 4.0, -60.0),
+            HomingMotorConfig(5, -60.0, -1.0, 4.0,  65.0),
+            HomingMotorConfig(6,  10.0,  1.0, 5.0, -38.0),
+            HomingMotorConfig(4,  60.0,  1.0, 4.0, -60.0),
         ],
         "phase2": [
-            HomingMotorConfig(2, -60.0, -1.0, 4.0, 65.0),
-            HomingMotorConfig(3, 10.0, 1.0, 4.5, -38.0),#4th val from 5 changed by dan
-            HomingMotorConfig(1, 60.0, 1.0, 4.5, -60.0),#4th val from 4 changed by dan
+            HomingMotorConfig(2, -60.0, -1.0, 4.0,  65.0),
+            HomingMotorConfig(3,  10.0,  1.0, 4.5, -38.0),  # 4th val from 5 changed by dan
+            HomingMotorConfig(1,  60.0,  1.0, 4.0, -60.0),  # 4th val from 4 changed by dan
         ],
     },
     "can1": {
         "phase1": [
-            HomingMotorConfig(8, 60.0, 1.0, 4.0, -65.0),
-            HomingMotorConfig(9, -10.0, -1.0, 5.0, 38.0),
-            HomingMotorConfig(7, -60.0, -1.0, 4.0, 60.0),
+            HomingMotorConfig(8,  60.0,  1.0, 4.0, -65.0),
+            HomingMotorConfig(9, -10.0, -1.0, 5.0,  38.0),
+            HomingMotorConfig(7, -60.0, -1.0, 4.0,  60.0),
         ],
         "phase2": [
-            HomingMotorConfig(11, 60.0, 1.0, 4.0, -65.0),
-            HomingMotorConfig(12, -10.0, -1.0, 5.0, 38.0),
-            HomingMotorConfig(10, -60.0, -1.0, 4.0, 60.0),
+            HomingMotorConfig(11,  60.0,  1.0, 4.0, -65.0),
+            HomingMotorConfig(12, -10.0, -1.0, 5.0,  38.0),
+            HomingMotorConfig(10, -60.0, -1.0, 4.0,  60.0),
         ],
     },
 }
@@ -162,9 +177,9 @@ def load_motor_command_config(path: str) -> MotorCommandConfig:
             raise ValueError(f"motor_config.json missing config for motor {motor_id}")
 
         config[motor_id] = {
-            "kp": float(entry["kp"]),
-            "kd": float(entry["kd"]),
-            "flipped": bool(entry["flipped"]),
+            "kp":         float(entry["kp"]),
+            "kd":         float(entry["kd"]),
+            "flipped":    bool(entry["flipped"]),
             "gear_ratio": float(entry["gear_ratio"]),
         }
 
@@ -185,7 +200,7 @@ def validate_leg_payload(payload: Any) -> LegPayload:
             raise ValueError(f"payload['{leg}'] must be a list or tuple")
 
         if len(values) != 3:
-            raise ValueError(f"payload['{leg}'] must contain exactly 3 angles")
+            raise ValueError(f"payload['{leg}'] must contain exactly 3 values")
 
         normalized[leg] = [float(v) for v in values]
 
@@ -214,6 +229,33 @@ def transform_live_angles(
             angle_deg = -angle_deg
         angle_deg *= float(cfg["gear_ratio"])
         transformed[motor_id] = angle_deg
+
+    return transformed
+
+
+def convert_coords_to_motor_targets(
+    leg_payload: LegPayload,
+    ik_offsets: dict,                # ← dict (per-leg), not tuple
+    motor_config: MotorCommandConfig,
+) -> Dict[int, float]:
+    """
+    Converts foot coordinates (x, y, z) per leg into final motor angles.
+    Pipeline: IK → per-leg calibration offset → flip → gear_ratio
+    """
+    transformed: Dict[int, float] = {}
+
+    for leg in LEG_ORDER:
+        x, y, z = leg_payload[leg]
+        m1, m2, m3 = ik_to_motor_deg(x, y, z, ik_offsets, leg)  # ← leg added
+        raw_angles = [m1, m2, m3]
+
+        for i, motor_id in enumerate(LEG_TO_MOTOR_IDS[leg]):
+            cfg = motor_config[motor_id]
+            angle = raw_angles[i]
+            if bool(cfg["flipped"]):
+                angle = -angle
+            angle *= float(cfg["gear_ratio"])
+            transformed[motor_id] = angle
 
     return transformed
 
@@ -307,7 +349,6 @@ def current_logger_thread_entry(
 
     try:
         with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
-            # Write header only if the file is empty / new
             fh.seek(0, 2)
             if fh.tell() == 0:
                 header = "timestamp_s," + ",".join(f"m{i}_a" for i in motor_ids)
@@ -341,6 +382,60 @@ def current_logger_thread_entry(
 
     except Exception as exc:
         print(f"[CurrentLogger] Fatal error: {exc}", flush=True)
+
+
+def temp_logger_thread_entry(
+    rt0: BusRuntime,
+    rt1: BusRuntime,
+    stop_event: threading.Event,
+    log_path: str = TEMP_LOG_PATH,
+    log_hz: float = TEMP_LOG_HZ,
+) -> None:
+    """
+    Reads temperature (°C) from all 12 motors at `log_hz` Hz and appends
+    every sample as a CSV row to `log_path`.
+
+    CSV columns:
+        timestamp_s, m1_c, m2_c, ..., m12_c
+    """
+    log_dt = 1.0 / log_hz
+    motor_ids = list(range(1, 13))
+
+    try:
+        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+            fh.seek(0, 2)
+            if fh.tell() == 0:
+                header = "timestamp_s," + ",".join(f"m{i}_c" for i in motor_ids)
+                fh.write(header + "\n")
+
+            print(
+                f"[TempLogger] Logging {log_hz:.0f} Hz motor temperatures -> {log_path}",
+                flush=True,
+            )
+
+            while not stop_event.is_set():
+                t_start = time.monotonic()
+                ts = time.time()
+
+                temps: List[float] = []
+                for motor_id in motor_ids:
+                    runtime = runtime_for_motor_id(motor_id, rt0, rt1)
+                    try:
+                        state = runtime.get_state_copy(motor_id)
+                        temps.append(round(state.temperature_C, 4))
+                    except Exception:
+                        temps.append(float("nan"))
+
+                row = f"{ts:.4f}," + ",".join(str(t) for t in temps)
+                fh.write(row + "\n")
+
+                elapsed = time.monotonic() - t_start
+                sleep_for = log_dt - elapsed
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+
+    except Exception as exc:
+        print(f"[TempLogger] Fatal error: {exc}", flush=True)
 
 
 def socket_listener_process(
@@ -424,6 +519,7 @@ def run_post_homing_live_control(
     stop_event: threading.Event,
     live_queue: MpQueue,
     motor_config: MotorCommandConfig,
+    ik_offsets: dict,               # ← dict (per-leg), not tuple
 ):
     first_live_packet_seen = False
     last_live_targets_deg: Optional[Dict[int, float]] = None
@@ -432,7 +528,7 @@ def run_post_homing_live_control(
     print("\n" + "=" * 70)
     print("🎯 POST-HOMING LIVE CONTROL READY")
     print(f"   Socket receiver process expects grouped targets on {LIVE_SOCKET_HOST}:{LIVE_SOCKET_PORT}")
-    print("   Format: {'fl':[a1,a2,a3], 'bl':[a4,a5,a6], 'fr':[a7,a8,a9], 'br':[a10,a11,a12]}")
+    print("   Format: {'fl':[x,y,z], 'bl':[x,y,z], 'fr':[x,y,z], 'br':[x,y,z]}  ← coords in cm")
     print("   CAN routing stays fixed from existing setup: M1-M6 -> can0, M7-M12 -> can1")
     print("   Until the first packet arrives, motors keep holding their homed nudge positions")
     print("   After the first packet, the limiter smoothly chases the newest target")
@@ -458,8 +554,9 @@ def run_post_homing_live_control(
 
         leg_packet = drain_latest_packet(live_queue)
         if leg_packet is not None:
-            flat_packet = flatten_leg_payload(leg_packet)
-            last_live_targets_deg = transform_live_angles(flat_packet, motor_config)
+            last_live_targets_deg = convert_coords_to_motor_targets(
+                leg_packet, ik_offsets, motor_config
+            )
 
             if not first_live_packet_seen:
                 print("✅ First live packet received. Switching from homed nudge hold to live target hold.")
@@ -473,7 +570,7 @@ def run_post_homing_live_control(
                 live_cmd_deg[motor_id] = limit_target_step(
                     current_cmd_deg=live_cmd_deg[motor_id],
                     requested_deg=last_live_targets_deg[motor_id],
-                    max_deg_per_s=MAX_LIVE_DEG_PER_S*motor_config[motor_id]["gear_ratio"],  #CHANGED BY DAN(* motor_config[motor_id]["gear_ratio"])
+                    max_deg_per_s=MAX_LIVE_DEG_PER_S * motor_config[motor_id]["gear_ratio"],
                     dt=tuning.loop_dt,
                 )
 
@@ -486,10 +583,13 @@ def main():
     time.sleep(3)
     print("=" * 70)
     print("🤖 AK60 | 4-LEG HOMING | 12 MOTORS | 2 CAN BUSES")
-    print("   Phase 1: Front Right (can1: M8→M9→M7)")
-    print("            Back Left   (can0: M5→M6→M4)  ← simultaneous")
-    print("   Phase 2: Back Right  (can1: M11→M12→M10)")
-    print("            Front Left  (can0: M2→M3→M1)  ← simultaneous")
+    if CALIBRATION_REQUIRED:
+        print("   Phase 1: Front Right (can1: M8→M9→M7)")
+        print("            Back Left   (can0: M5→M6→M4)  ← simultaneous")
+        print("   Phase 2: Back Right  (can1: M11→M12→M10)")
+        print("            Front Left  (can0: M2→M3→M1)  ← simultaneous")
+    else:
+        print("   ⏩ Homing skipped (CALIBRATION_REQUIRED=False)")
     print("   Final:    Post-homing live control with grouped leg socket receiver process")
     print("=" * 70)
 
@@ -582,52 +682,72 @@ def main():
             ctrl1.send_idle_hold_once()
             time.sleep(tuning.loop_dt)
 
-        print("🚀 Starting phase 1 on both CAN buses...\n")
+        if CALIBRATION_REQUIRED:
+            print("🚀 Starting phase 1 on both CAN buses...\n")
 
-        t0 = threading.Thread(
-            target=controller_thread_entry,
-            args=(
-                ctrl0,
-                can0_phase1_done,
-                can1_phase1_done,
-                can0_phase2_done,
-                final_hold_takeover,
-                stop_event,
-                errors,
-            ),
-            daemon=True,
-        )
-        t1 = threading.Thread(
-            target=controller_thread_entry,
-            args=(
-                ctrl1,
-                can1_phase1_done,
-                can0_phase1_done,
-                can1_phase2_done,
-                final_hold_takeover,
-                stop_event,
-                errors,
-            ),
-            daemon=True,
-        )
-        t0.start()
-        t1.start()
+            t0 = threading.Thread(
+                target=controller_thread_entry,
+                args=(
+                    ctrl0,
+                    can0_phase1_done,
+                    can1_phase1_done,
+                    can0_phase2_done,
+                    final_hold_takeover,
+                    stop_event,
+                    errors,
+                ),
+                daemon=True,
+            )
+            t1 = threading.Thread(
+                target=controller_thread_entry,
+                args=(
+                    ctrl1,
+                    can1_phase1_done,
+                    can0_phase1_done,
+                    can1_phase2_done,
+                    final_hold_takeover,
+                    stop_event,
+                    errors,
+                ),
+                daemon=True,
+            )
+            t0.start()
+            t1.start()
 
-        while not stop_event.is_set():
+            while not stop_event.is_set():
+                if errors:
+                    raise RuntimeError(" | ".join(errors))
+                if can0_phase2_done.is_set() and can1_phase2_done.is_set():
+                    break
+                time.sleep(tuning.loop_dt)
+
             if errors:
                 raise RuntimeError(" | ".join(errors))
 
-            if can0_phase2_done.is_set() and can1_phase2_done.is_set():
-                break
+            for _ in range(5):
+                ctrl0.hold_all_once()
+                ctrl1.hold_all_once()
+                time.sleep(tuning.loop_dt)
 
-            time.sleep(tuning.loop_dt)
+            final_hold_takeover.set()
 
-        if errors:
-            raise RuntimeError(" | ".join(errors))
+            t0.join()
+            t1.join()
+
+            if errors:
+                raise RuntimeError(" | ".join(errors))
+
+        else:
+            print("⏩ Skipping homing — CALIBRATION_REQUIRED=False. Proceeding to live control...")
+            final_hold_takeover.set()
 
         print(f"\n📄 Loading motor command config from {MOTOR_CONFIG_PATH}...")
         motor_config = load_motor_command_config(MOTOR_CONFIG_PATH)
         print("✅ Motor command config loaded.")
+
+        print("📐 Computing IK calibration offsets...")
+        ik_offsets = compute_ik_offsets()
+        print("✅ IK calibration offsets computed.")
 
         current_log_thread = threading.Thread(
             target=current_logger_thread_entry,
@@ -640,6 +760,17 @@ def main():
             f"📊 Motor current logger started at {CURRENT_LOG_HZ:.0f} Hz -> {CURRENT_LOG_PATH}"
         )
 
+        temp_log_thread = threading.Thread(
+            target=temp_logger_thread_entry,
+            args=(rt0, rt1, stop_event),
+            daemon=True,
+            name="TempLogger",
+        )
+        temp_log_thread.start()
+        print(
+            f"🌡️  Motor temperature logger started at {TEMP_LOG_HZ:.0f} Hz -> {TEMP_LOG_PATH}"
+        )
+
         live_queue = mp.Queue(maxsize=LIVE_QUEUE_MAXSIZE)
         live_socket_stop = mp.Event()
         live_socket_process = mp.Process(
@@ -650,19 +781,6 @@ def main():
         live_socket_process.start()
         print(f"📡 Socket receiver process started with PID {live_socket_process.pid}.")
 
-        for _ in range(5):
-            ctrl0.hold_all_once()
-            ctrl1.hold_all_once()
-            time.sleep(tuning.loop_dt)
-
-        final_hold_takeover.set()
-
-        t0.join()
-        t1.join()
-
-        if errors:
-            raise RuntimeError(" | ".join(errors))
-
         run_post_homing_live_control(
             ctrl0=ctrl0,
             ctrl1=ctrl1,
@@ -672,6 +790,7 @@ def main():
             stop_event=stop_event,
             live_queue=live_queue,
             motor_config=motor_config,
+            ik_offsets=ik_offsets,
         )
 
     except KeyboardInterrupt:
