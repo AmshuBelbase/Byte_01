@@ -6,18 +6,20 @@ import time
 from typing import Any, Dict, List
 
 
-HOST = "127.0.0.1"
+HOST = "127.0.0.1" #"127.0.0.1"
 PORT = 50000
 
 LEG_ORDER = ("fl", "bl", "fr", "br")
 LegPayload = Dict[str, List[float]]
-
+thigh = 0#30
+knee = 0#30
 
 def validate_leg_payload(payload: Any) -> LegPayload:
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict")
 
     normalized: LegPayload = {}
+    
     for leg in LEG_ORDER:
         if leg not in payload:
             raise ValueError(f"missing leg '{leg}'")
@@ -45,10 +47,10 @@ def send_leg_angles(payload: Any, host: str = HOST, port: int = PORT) -> None:
 
 def main() -> None:
     payload: LegPayload = {
-        "fl": [65.0, -135.0, 52.0], # 1, 2, 3 55 (60)  (145 65) 
-        "bl": [62.0, -140.0, 55.0], # 4, 5, 6 50
-        "fr": [61.0, -140.0, 55.0], # 7, 8, 9 55  (50)
-        "br": [57.0, -140.0, 55.0], # 10, 11, 12 50 (45)
+        "fl": [83.0, -107.0-thigh, 4.0+knee], # 1, 2, 3 55 (60)  (145 65) 
+        "bl": [84.0, -98.0-thigh, 11.0+knee], # 4, 5, 6 50
+        "fr": [89.0, -108.0-thigh, 12.0+knee], # 7, 8, 9 55  (50)
+        "br": [88.0, -97.0-thigh, 11.0+knee], # 10, 11, 12 50 (45)  hip all 2 degree more from straight
     }  
 
     send_leg_angles(payload)

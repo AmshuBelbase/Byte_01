@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # temperature_C for temperature
+import sys
 import json
 import multiprocessing as mp
 import pickle
@@ -33,9 +34,11 @@ LEG_TO_MOTOR_IDS: Dict[str, List[int]] = {
     "br": [10, 11, 12],
 }
 
-MAX_LIVE_DEG_PER_S = 150.0
+# Default safety speed limit — used when the sender does NOT include a "speed" key.
+# tapping_gait.py sends "speed": 900.0 to override this for fast tap movements.
+# test_sender.py and any other client that omits "speed" will use this value.
+MAX_LIVE_DEG_PER_S = 120
 
-CALIBRATION_REQUIRED = False
 
 CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_currents.csv"
 CURRENT_LOG_HZ = 5.0
@@ -45,30 +48,45 @@ TEMP_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_
 TEMP_LOG_HZ = 5.0
 TEMP_LOG_DT = 1.0 / TEMP_LOG_HZ
 
+# ─── CLI ──────────────────────────────────────────────────────────────────────
+
+def parse_calibration_flag() -> bool:
+    if len(sys.argv) < 2:
+        return False
+    arg = sys.argv[1].strip().lower()
+    if arg == "y":
+        return True
+    elif arg == "n":
+        return False
+    else:
+        print(f"Unknown argument '{arg}'. Use 'y' or 'n'. Defaulting to False.")
+        return False
+
+
 
 CAN_CONFIG: Dict[str, Dict[str, List[HomingMotorConfig]]] = {
     "can0": {
         "phase1": [
-            HomingMotorConfig(5, -60.0, -1.0, 4.0,  65.0),
-            HomingMotorConfig(6,  10.0,  1.0, 5.0, -38.0),
-            HomingMotorConfig(4,  60.0,  1.0, 4.0, -60.0),
+            HomingMotorConfig(5, -60.0, -1.0, 4.5, 65.0),
+            HomingMotorConfig(6, 10.0, 1.0, 3.5, -38.0),
+            HomingMotorConfig(4, 60.0, 1.0, 4.5, -90.0),
         ],
         "phase2": [
-            HomingMotorConfig(2, -60.0, -1.0, 4.0,  65.0),
-            HomingMotorConfig(3,  10.0,  1.0, 4.5, -38.0),  # 4th val from 5 changed by dan
-            HomingMotorConfig(1,  60.0,  1.0, 4.0, -60.0),  # 4th val from 4 changed by dan
+            HomingMotorConfig(2, -60.0, -1.0, 4.5, 65.0),
+            HomingMotorConfig(3, 10.0, 1.0, 3.5, -38.0),#4th val from 5 changed by dan
+            HomingMotorConfig(1, 60.0, 1.0, 4.5, -85.0),#4th val from 4 changed by dan
         ],
     },
     "can1": {
         "phase1": [
-            HomingMotorConfig(8,  60.0,  1.0, 4.0, -65.0),
-            HomingMotorConfig(9, -10.0, -1.0, 5.0,  38.0),
-            HomingMotorConfig(7, -60.0, -1.0, 4.0,  60.0),
+            HomingMotorConfig(8, 60.0, 1.0, 4.5, -65.0),
+            HomingMotorConfig(9, -10.0, -1.0, 3.5, 38.0),
+            HomingMotorConfig(7, -60.0, -1.0, 4.5, 80.0),
         ],
         "phase2": [
-            HomingMotorConfig(11,  60.0,  1.0, 4.0, -65.0),
-            HomingMotorConfig(12, -10.0, -1.0, 5.0,  38.0),
-            HomingMotorConfig(10, -60.0, -1.0, 4.0,  60.0),
+            HomingMotorConfig(11, 60.0, 1.0, 4.5, -65.0),
+            HomingMotorConfig(12, -10.0, -1.0, 4.0, 38.0),
+            HomingMotorConfig(10, -60.0, -1.0, 4.5, 90.0),
         ],
     },
 }
@@ -186,7 +204,17 @@ def load_motor_command_config(path: str) -> MotorCommandConfig:
     return config
 
 
-def validate_leg_payload(payload: Any) -> LegPayload:
+def validate_leg_payload(payload: Any) -> Tuple[LegPayload, Optional[float]]:
+    """
+    Validates the incoming socket payload.
+
+    Returns:
+        (normalized_leg_payload, speed_override)
+
+    speed_override is None if the sender did not include a "speed" key,
+    in which case run_post_homing_live_control falls back to MAX_LIVE_DEG_PER_S.
+    tapping_gait.py sends "speed": 900.0 to unlock fast tap movements.
+    """
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict with keys: fl, bl, fr, br")
 
@@ -204,7 +232,12 @@ def validate_leg_payload(payload: Any) -> LegPayload:
 
         normalized[leg] = [float(v) for v in values]
 
-    return normalized
+    # Optional per-packet speed override — absent means use the global default
+    speed_override: Optional[float] = None
+    if "speed" in payload:
+        speed_override = float(payload["speed"])
+
+    return normalized, speed_override
 
 
 def flatten_leg_payload(payload: LegPayload) -> List[float]:
@@ -290,7 +323,13 @@ def send_live_targets(
         )
 
 
-def drain_latest_packet(live_queue: MpQueue) -> Optional[LegPayload]:
+def drain_latest_packet(
+    live_queue: MpQueue,
+) -> Optional[Tuple[LegPayload, Optional[float]]]:
+    """
+    Drains the queue and returns the most recent (leg_payload, speed_override) tuple,
+    or None if the queue was empty.
+    """
     latest = None
     while True:
         try:
@@ -348,7 +387,7 @@ def current_logger_thread_entry(
     motor_ids = list(range(1, 13))
 
     try:
-        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+        with open(log_path, "w", buffering=1, encoding="utf-8") as fh:
             fh.seek(0, 2)
             if fh.tell() == 0:
                 header = "timestamp_s," + ",".join(f"m{i}_a" for i in motor_ids)
@@ -402,7 +441,7 @@ def temp_logger_thread_entry(
     motor_ids = list(range(1, 13))
 
     try:
-        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+        with open(log_path, "w", buffering=1, encoding="utf-8") as fh:
             fh.seek(0, 2)
             if fh.tell() == 0:
                 header = "timestamp_s," + ",".join(f"m{i}_c" for i in motor_ids)
@@ -484,11 +523,13 @@ def socket_listener_process(
 
             try:
                 payload = pickle.loads(bytes(data))
-                packet = validate_leg_payload(payload)
+                # validate_leg_payload now returns (leg_payload, speed_override)
+                packet, speed_override = validate_leg_payload(payload)
             except Exception as exc:
                 print(f"[Socket Process] Dropping invalid packet from {addr}: {exc}", flush=True)
                 continue
 
+            # Drain stale items so only the latest command is in the queue
             while True:
                 try:
                     dest_queue.get_nowait()
@@ -498,7 +539,8 @@ def socket_listener_process(
                     break
 
             try:
-                dest_queue.put_nowait(packet)
+                # Queue carries (leg_payload, speed_override) together
+                dest_queue.put_nowait((packet, speed_override))
             except Exception:
                 pass
 
@@ -525,14 +567,19 @@ def run_post_homing_live_control(
     last_live_targets_deg: Optional[Dict[int, float]] = None
     live_cmd_deg: Dict[int, float] = initialize_live_command_state(rt0, rt1)
 
+    # Active speed limit — updated each time a packet with a "speed" key arrives.
+    # Falls back to MAX_LIVE_DEG_PER_S when the sender omits "speed" (e.g. test_sender).
+    current_speed_limit: float = MAX_LIVE_DEG_PER_S
+
     print("\n" + "=" * 70)
     print("🎯 POST-HOMING LIVE CONTROL READY")
     print(f"   Socket receiver process expects grouped targets on {LIVE_SOCKET_HOST}:{LIVE_SOCKET_PORT}")
     print("   Format: {'fl':[x,y,z], 'bl':[x,y,z], 'fr':[x,y,z], 'br':[x,y,z]}  ← coords in cm")
+    print("   Optional: include 'speed': <deg/s> in payload to override the per-packet speed limit")
     print("   CAN routing stays fixed from existing setup: M1-M6 -> can0, M7-M12 -> can1")
     print("   Until the first packet arrives, motors keep holding their homed nudge positions")
     print("   After the first packet, the limiter smoothly chases the newest target")
-    print(f"   Live safety limit: {MAX_LIVE_DEG_PER_S:.1f} deg/s per motor")
+    print(f"   Default safety limit: {MAX_LIVE_DEG_PER_S:.1f} deg/s per motor  (tapping_gait uses 900)")
     print("=" * 70)
 
     while not stop_event.is_set():
@@ -552,14 +599,23 @@ def run_post_homing_live_control(
         if rt1.faulted:
             raise RuntimeError(rt1.get_fault_summary())
 
-        leg_packet = drain_latest_packet(live_queue)
-        if leg_packet is not None:
+        # drain_latest_packet now returns (leg_payload, speed_override) or None
+        item = drain_latest_packet(live_queue)
+        if item is not None:
+            leg_packet, speed_override = item
             last_live_targets_deg = convert_coords_to_motor_targets(
                 leg_packet, ik_offsets, motor_config
             )
 
+            # Use the per-packet speed if provided, otherwise fall back to global default
+            current_speed_limit = speed_override if speed_override is not None else MAX_LIVE_DEG_PER_S
+
             if not first_live_packet_seen:
-                print("✅ First live packet received. Switching from homed nudge hold to live target hold.")
+                print(
+                    f"✅ First live packet received. "
+                    f"Speed limit: {current_speed_limit:.1f} deg/s. "
+                    "Switching from homed nudge hold to live target hold."
+                )
                 first_live_packet_seen = True
 
         if not first_live_packet_seen:
@@ -570,7 +626,7 @@ def run_post_homing_live_control(
                 live_cmd_deg[motor_id] = limit_target_step(
                     current_cmd_deg=live_cmd_deg[motor_id],
                     requested_deg=last_live_targets_deg[motor_id],
-                    max_deg_per_s=MAX_LIVE_DEG_PER_S * motor_config[motor_id]["gear_ratio"],
+                    max_deg_per_s=current_speed_limit * motor_config[motor_id]["gear_ratio"],
                     dt=tuning.loop_dt,
                 )
 
@@ -581,6 +637,7 @@ def run_post_homing_live_control(
 
 def main():
     time.sleep(3)
+    CALIBRATION_REQUIRED = parse_calibration_flag()
     print("=" * 70)
     print("🤖 AK60 | 4-LEG HOMING | 12 MOTORS | 2 CAN BUSES")
     if CALIBRATION_REQUIRED:
