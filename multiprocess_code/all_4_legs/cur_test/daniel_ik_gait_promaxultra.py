@@ -33,16 +33,16 @@ PORT = 50000
 # ─────────────────────────────────────────────────────────────────────────────
 #  POSES
 # ─────────────────────────────────────────────────────────────────────────────
-SITTING_XYZ  = [-9.094, 11.0, 6.0]
-STANDING_XYZ = [-9.094, 25.0, 6.0]
+SITTING_XYZ  = [-9.094, 11.0, 3.0]
+STANDING_XYZ = [-9.094, 25.0, 3.0]
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  GAIT PARAMETERS  ← tune these
 # ─────────────────────────────────────────────────────────────────────────────
-STEP_HEIGHT_Y              = 5.0    # cm  — swing foot lift height (Y-axis)
-STRIDE_Z                   = 3.0    # cm  — Z sweep per step  (forward / backward)
+STEP_HEIGHT_Y              = 4.0    # cm  — swing foot lift height (Y-axis)
+STRIDE_Z                   = 4.0    # cm  — Z sweep per step  (forward / backward)
 STRIDE_X                   = 4.0    # cm  — X sweep per step  (left / right strafe)
-STEP_TIME                  = 0.4   # s   — duration of one trot step
+STEP_TIME                  = 0.25  # s   — duration of one trot step
 SEND_HZ                    = 80.0   # Hz  — payload send rate
 
 GAIT_SPEED_DEG_PER_S       = 500.0  # deg/s — used during all motion frames

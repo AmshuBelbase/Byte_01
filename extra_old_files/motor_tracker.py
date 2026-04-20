@@ -135,4 +135,4 @@ def run_target_lock(motor_id=2, can_interface='can0'):
 
 if __name__ == '__main__':
     threading.Thread(target=udp_listener, daemon=True).start()
-    run_target_lock(motor_id=2, can_interface='can0')
+    run_target_lock(motor_id=2, can_interface='can1')

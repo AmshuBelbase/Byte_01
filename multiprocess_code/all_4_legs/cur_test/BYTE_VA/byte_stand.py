@@ -20,7 +20,7 @@ HOLD_SECONDS  = 3.0             # how long to hold the position
 # ────────────────────────────────────────────────────────────────────────────
 '''
 # Keep all other legs at STAND position (safe — no movement)
-STAND = [-9.65, 25.0, 6.0]
+STAND = [-9.65, 20.0, 6.0]
 #STAND = [-9.65, 11.0, 9.0]
 CUSTOM = [-9.65, 25.0, 6.0]
 #Leftside -10 went in to the bot

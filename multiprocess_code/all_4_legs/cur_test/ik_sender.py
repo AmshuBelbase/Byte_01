@@ -15,14 +15,14 @@ PORT = 50000
 '''
 # ── CHANGE THIS to test ──────────────────────────────────────────────────────
 TARGET_LEG = "fr"               # which leg to move: fl, bl, fr, br
-TARGET_COORDS = (-9.65, 11.0, 9.0)   # (x, y, z) in cm
+TARGET_COORDS = (-9.094, 11.0, 9.0)   # (x, y, z) in cm
 HOLD_SECONDS  = 3.0             # how long to hold the position
 # ────────────────────────────────────────────────────────────────────────────
 '''
 # Keep all other legs at sitting position (safe — no movement)
-SITTING = [-9.65, 11.0, 6.0]
-#SITTING = [-9.65, 11.0, 9.0]
-CUSTOM = [-9.65, 11.0, 6.0]
+SITTING = [-9.094, 11.0, 6.0]
+#SITTING = [-9.094, 11.0, 9.0]
+CUSTOM = [-9.094, 11.0, 6.0]
 #Leftside -10 went in to the bot
 #Right Side -10 went in to the bot
 HOLD_SECONDS  = 3.0             # how long to hold the position

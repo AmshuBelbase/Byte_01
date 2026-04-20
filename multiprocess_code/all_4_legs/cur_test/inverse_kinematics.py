@@ -4,11 +4,10 @@ import numpy as np
 
 
 # ─── Robot Link Lengths (cm) ─────────────────────────────────────────────────
-L1 = 6.1
-LINK_CONST = -9.65
-L2 = 21.9
-L3 = 21.4
-
+L1 = 5.995
+LINK_CONST = -9.094
+L2 = 22.0
+L3 = 21.5
 
 # ─── Per-Leg Calibration Data ─────────────────────────────────────────────────
 # For each leg, provide:
@@ -21,20 +20,20 @@ L3 = 21.4
 
 LEG_CALIBRATION = {
     "fr": {
-        "coords":    (-9.65, 11.0, 9.0),
-        "motor_deg": (88.0, -112.0, 5.0),
+        "coords":    (-9.094, 11.0, 9.0),
+        "motor_deg": (85.0, -110.0, 4.0),
     },
     "fl": {
-        "coords":    (-9.65, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (87.0, -111.0, 4.0),   # ← fl theta1 is 62, not 60
+        "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
+        "motor_deg": (87.0, -110.0, 4.0),   # ← fl theta1 is 62, not 60
     },
     "br": {
-        "coords":    (-9.65, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (90.0, -97.0, 11.0),   # ← fill actual motor angles
+        "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
+        "motor_deg": (90.0, -95.0, 4.0),   # ← fill actual motor angles
     },
     "bl": {
-        "coords":    (-9.65, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (85.0, -97.0, 11.0),   # ← fill actual motor angles
+        "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
+        "motor_deg": (83.0, -95.0, 4.0),   # ← fill actual motor angles
     },
 }
 
