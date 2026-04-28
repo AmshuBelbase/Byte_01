@@ -9,7 +9,6 @@ LINK_CONST = -9.094
 L2 = 22.0
 L3 = 21.5
 
-
 # ─── Per-Leg Calibration Data ─────────────────────────────────────────────────
 # For each leg, provide:
 #   "coords"    : (x, y, z) foot position in cm at the sitting pose
@@ -22,19 +21,19 @@ L3 = 21.5
 LEG_CALIBRATION = {
     "fr": {
         "coords":    (-9.094, 11.0, 9.0),
-        "motor_deg": (89.0, -111.0, 3.0),
+        "motor_deg": (85.0, -100.0, 3.0),
     },
     "fl": {
         "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (85.0, -112.0, 10.0),   # ← fl theta1 is 62, not 60
+        "motor_deg": (87.0, -100.0, 3.0),   # ← fl theta1 is 62, not 60
     },
     "br": {
         "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (93.0, -97.0, 10.0),   # ← fill actual motor angles
+        "motor_deg": (90.0, -90.0, 3.0),   # ← fill actual motor angles
     },
     "bl": {
         "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (93.0, -97.0, 10.0),   # ← fill actual motor angles
+        "motor_deg": (83.0, -90.0, 3.0),   # ← fill actual motor angles
     },
 }
 
@@ -74,17 +73,17 @@ def inverse_kinematics(x, y, z, L1=L1, linkConst=LINK_CONST, L2=L2, L3=L3):
     a = np.arctan2(y, x)
     b = np.arccos(np.clip(linkConst / d, -1.0, 1.0))
 
-    T = (linkConst * np.cos(a - b), linkConst * np.sin(a - b))
+    T = (linkConst * np.cos(a - b), linkConst * np.sin(a - b), L1)
 
     theta_A = np.arctan2(home_linkConst[1], home_linkConst[0])
     theta_B = np.arctan2(T[1], T[0])
     theta1  = theta_B - theta_A
     if theta1 < 0:
-        theta1 += 2 * np.pi
+        theta1 = (theta1 + np.pi) % (2 * np.pi) - np.pi
 
     X = x - T[0]
     Y = y - T[1]
-    Z = z - L1
+    Z = z - T[2]
 
     L = np.sqrt(X**2 + Y**2 + Z**2)
 

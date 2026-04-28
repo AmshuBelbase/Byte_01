@@ -17,7 +17,7 @@ from homing_controller import BusHomingController, ControlTuning, HomingMotorCon
 from inverse_kinematics import compute_ik_offsets, ik_to_motor_deg
 
 
-LIVE_SOCKET_HOST = "127.0.0.1"
+LIVE_SOCKET_HOST = "10.196.200.34"#127.0.0.1
 LIVE_SOCKET_PORT = 50000
 LIVE_QUEUE_MAXSIZE = 1
 MOTOR_CONFIG_PATH = "motor_config.json"

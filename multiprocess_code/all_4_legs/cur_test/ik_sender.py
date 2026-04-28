@@ -10,7 +10,7 @@ import pickle
 import socket
 import time
 
-HOST = "127.0.0.1"
+HOST = "10.196.200.34"
 PORT = 50000
 '''
 # ── CHANGE THIS to test ──────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ HOLD_SECONDS  = 3.0             # how long to hold the position
 # ────────────────────────────────────────────────────────────────────────────
 '''
 # Keep all other legs at sitting position (safe — no movement)
-SITTING = [-9.094, 11.0, 6.0]
+SITTING = [-9.094, 30.0, 10.0]
 #SITTING = [-9.094, 11.0, 9.0]
 CUSTOM = [-9.094, 11.0, 6.0]
 #Leftside -10 went in to the bot

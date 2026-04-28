@@ -25,7 +25,7 @@ LEG_ORDER: Tuple[str, str, str, str] = ("fl", "bl", "fr", "br")
 LegPayload = Dict[str, List[float]]
 MotorCommandConfig = Dict[int, Dict[str, float | bool]]
 
-MAX_LIVE_DEG_PER_S = 80.0
+MAX_LIVE_DEG_PER_S = 200.0
 
 
 

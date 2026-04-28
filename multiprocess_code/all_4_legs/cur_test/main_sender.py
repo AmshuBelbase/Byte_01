@@ -6,7 +6,7 @@ import time
 from typing import Any, Dict, List
 
 
-HOST = "127.0.0.1" #"127.0.0.1"
+HOST = "10.196.200.34" #"127.0.0.1"
 PORT = 50000
 
 LEG_ORDER = ("fl", "bl", "fr", "br")
@@ -47,10 +47,10 @@ def send_leg_angles(payload: Any, host: str = HOST, port: int = PORT) -> None:
 
 def main() -> None:
     payload: LegPayload = {
-        "fl": [83.0, -107.0-thigh, 4.0+knee], # 1, 2, 3 55 (60)  (145 65) 
-        "bl": [84.0, -98.0-thigh, 11.0+knee], # 4, 5, 6 50
-        "fr": [89.0, -108.0-thigh, 12.0+knee], # 7, 8, 9 55  (50)
-        "br": [88.0, -97.0-thigh, 11.0+knee], # 10, 11, 12 50 (45)  hip all 2 degree more from straight
+        "fl": [87.0, -110.0-thigh, 4.0+knee], # 1, 2, 3 55 (60)  (145 65) 
+        "bl": [83.0, -98.0-thigh, 4.0+knee], # 4, 5, 6 50
+        "fr": [85.0, -110.0-thigh, 4.0+knee], # 7, 8, 9 55  (50)
+        "br": [85.0, -98.0-thigh, 10.0+knee], # 10, 11, 12 50 (45)  hip all 2 degree more from straight
     }  
 
     send_leg_angles(payload)

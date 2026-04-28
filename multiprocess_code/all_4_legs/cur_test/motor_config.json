@@ -1,8 +1,8 @@
 {
   "motors": {
     "1": {
-      "kp": 300.0,
-      "kd": 2.0,
+      "kp": 400.0,
+      "kd": 1.5,
       
       
       "flipped": true,
@@ -10,23 +10,23 @@
     },
     "2": {
       "kp": 300.0,
-      "kd": 2.0,
+      "kd": 1.5,
       
       
       "flipped": true,
       "gear_ratio": 1.0
     },
     "3": {
-      "kp": 350.0,
-      "kd": 2.0,
+      "kp": 400.0,
+      "kd": 1.5,
       
       
       "flipped": true,
       "gear_ratio": 1.5
     },
     "4": {
-      "kp": 300.0,
-      "kd": 2.0,
+      "kp": 400.0,
+      "kd": 1.5,
       
       
       "flipped": true,
@@ -34,23 +34,23 @@
     },
     "5": {
       "kp": 300.0,
-      "kd": 2.0,
+      "kd": 1.5,
       
       
       "flipped": true,
       "gear_ratio": 1.0
     },
     "6": {
-      "kp": 300.0,
-      "kd": 2.0,
+      "kp": 400.0,
+      "kd": 1.5,
       
       
       "flipped": true,
       "gear_ratio": 1.5
     },
     "7": {
-      "kp": 300.0,
-      "kd": 2.0,
+      "kp": 400.0,
+      "kd": 1.5,
       
       
       "flipped": false,
@@ -58,23 +58,23 @@
     },
     "8": {
       "kp": 300.0,
-      "kd": 2.0,
+      "kd": 1.5,
       
       
       "flipped": false,
       "gear_ratio": 1.0
     },
     "9": {
-      "kp": 300.0,
-      "kd": 2.0,
+      "kp": 400.0,
+      "kd": 1.5,
       
       
       "flipped": false,
       "gear_ratio": 1.5
     },
     "10": {
-      "kp": 300.0,
-      "kd": 2.0,
+      "kp": 400.0,
+      "kd": 1.5,
       
       
       "flipped": false,
@@ -82,15 +82,15 @@
     },
     "11": {
       "kp": 300.0,
-      "kd": 2.0,
+      "kd": 1.5,
       
       
       "flipped": false,
       "gear_ratio": 1.0
     },
     "12": {
-      "kp": 300.0,
-      "kd": 2.0,
+      "kp": 400.0,
+      "kd": 1.5,
       
       
       "flipped": false,

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 #temperature_C for temperature
+import sys
 import json
 import multiprocessing as mp
 import pickle
@@ -15,7 +16,7 @@ from can_runtime import BusRuntime
 from homing_controller import BusHomingController, ControlTuning, HomingMotorConfig
 
 
-LIVE_SOCKET_HOST = "127.0.0.1"#"127.0.0.1"
+LIVE_SOCKET_HOST = "0.0.0.0"#"127.0.0.1"
 LIVE_SOCKET_PORT = 50000
 LIVE_QUEUE_MAXSIZE = 1
 MOTOR_CONFIG_PATH = "motor_config.json"
@@ -26,7 +27,7 @@ MotorCommandConfig = Dict[int, Dict[str, float | bool]]
 
 MAX_LIVE_DEG_PER_S = 80.0
 
-CALIBRATION_REQUIRED = True  # Set to False to skip homing and go straight to live control
+
 
 CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_currents.csv"
 CURRENT_LOG_HZ = 5.0
@@ -36,30 +37,44 @@ TEMP_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_
 TEMP_LOG_HZ = 5.0
 TEMP_LOG_DT = 1.0 / TEMP_LOG_HZ
 
+# ─── CLI ──────────────────────────────────────────────────────────────────────
+
+def parse_calibration_flag() -> bool:
+    if len(sys.argv) < 2:
+        return False
+    arg = sys.argv[1].strip().lower()
+    if arg == "y":
+        return True
+    elif arg == "n":
+        return False
+    else:
+        print(f"Unknown argument '{arg}'. Use 'y' or 'n'. Defaulting to False.")
+        return False
+
 
 CAN_CONFIG: Dict[str, Dict[str, List[HomingMotorConfig]]] = {
     "can0": {
         "phase1": [
-            HomingMotorConfig(5, -60.0, -1.0, 3.8, 65.0),
-            HomingMotorConfig(6, 10.0, 1.0, 4.0, -38.0),
-            HomingMotorConfig(4, 60.0, 1.0, 4.0, -90.0),
+            HomingMotorConfig(5, -60.0, -1.0, 4.5, 65.0),
+            HomingMotorConfig(6, 10.0, 1.0, 3.5, -38.0),
+            HomingMotorConfig(4, 60.0, 1.0, 4.5, -90.0),
         ],
         "phase2": [
-            HomingMotorConfig(2, -60.0, -1.0, 3.8, 65.0),
-            HomingMotorConfig(3, 10.0, 1.0, 4.0, -38.0),#4th val from 5 changed by dan
-            HomingMotorConfig(1, 60.0, 1.0, 4.0, -80.0),#4th val from 4 changed by dan
+            HomingMotorConfig(2, -60.0, -1.0, 4.5, 65.0),
+            HomingMotorConfig(3, 10.0, 1.0, 3.5, -38.0),#4th val from 5 changed by dan
+            HomingMotorConfig(1, 60.0, 1.0, 4.5, -80.0),#4th val from 4 changed by dan
         ],
     },
     "can1": {
         "phase1": [
-            HomingMotorConfig(8, 60.0, 1.0, 3.8, -65.0),
-            HomingMotorConfig(9, -10.0, -1.0, 4.0, 38.0),
-            HomingMotorConfig(7, -60.0, -1.0, 4.0, 80.0),
+            HomingMotorConfig(8, 60.0, 1.0, 4.5, -65.0),
+            HomingMotorConfig(9, -10.0, -1.0, 3.5, 38.0),
+            HomingMotorConfig(7, -60.0, -1.0, 4.5, 80.0),
         ],
         "phase2": [
-            HomingMotorConfig(11, 60.0, 1.0, 3.8, -65.0),
+            HomingMotorConfig(11, 60.0, 1.0, 4.5, -65.0),
             HomingMotorConfig(12, -10.0, -1.0, 4.0, 38.0),
-            HomingMotorConfig(10, -60.0, -1.0, 4.0, 90.0),
+            HomingMotorConfig(10, -60.0, -1.0, 4.5, 90.0),
         ],
     },
 }
@@ -312,7 +327,7 @@ def current_logger_thread_entry(
     motor_ids = list(range(1, 13))
 
     try:
-        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+        with open(log_path, "w", buffering=1, encoding="utf-8") as fh:
             # Write header only if the file is empty / new
             fh.seek(0, 2)
             if fh.tell() == 0:
@@ -367,7 +382,7 @@ def temp_logger_thread_entry(
     motor_ids = list(range(1, 13))
 
     try:
-        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+        with open(log_path, "w", buffering=1, encoding="utf-8") as fh:
             # Write header only if the file is empty / new
             fh.seek(0, 2)
             if fh.tell() == 0:
@@ -545,6 +560,7 @@ def run_post_homing_live_control(
 
 def main():
     time.sleep(3)
+    CALIBRATION_REQUIRED = parse_calibration_flag()
     print("=" * 70)
     print("🤖 AK60 | 4-LEG HOMING | 12 MOTORS | 2 CAN BUSES")
     if CALIBRATION_REQUIRED:
@@ -568,43 +584,61 @@ def main():
     final_hold_takeover = threading.Event()
 
     tuning = ControlTuning(
+        # --- Core control ---
         active_kp=114.0,
         active_kd=1.2,
+
+        # --- Hold ---
         hold_kp=54.0,
         hold_kd=0.9,
         homed_hold_kp=84.0,
         homed_hold_kd=1.2,
-        loop_hz=100.0,
-        min_move_time_s=1.2,
-        seconds_per_deg=0.03,
-        trigger_confirm_s=0.15,
-        trigger_velocity_raw_max=4.0,
+
+        # --- Loop ---
+        loop_hz=120.0,   # slightly faster than 100
+
+        # --- Motion timing ---
+        min_move_time_s=0.7,
+        seconds_per_deg=0.018,
+
+        # --- Homing detection ---
+        trigger_confirm_s=0.12,
+        trigger_velocity_raw_max=5.0,
+
+        # --- Search motion (MAIN SPEED CONTROL) ---
+        search_max_vel_deg_s=140.0,        # 🔼 from 100
+        search_max_acc_deg_s2=260.0,       # 🔼 faster ramp
+
+        continuous_search_vel_deg_s=75.0,  # 🔼 from 40
+
+        # --- Nudge (final positioning) ---
+        nudge_max_vel_deg_s=85.0,          # 🔼 from 60
+        nudge_max_acc_deg_s2=280.0,
+
+        # --- Precision ---
+        advance_target_tolerance_deg=2.0,
+        advance_settle_time_s=0.18,
+
+        # --- Stall detection ---
+        stall_progress_epsilon_deg=0.25,
+        stall_timeout_s=0.45,
+
+        # --- Safety / contact ---
+        contact_hold_offset_deg=0.4,
+        contact_release_move_deg=2.5,
+        contact_stall_vel_max=2.5,
+
+        # --- Timeouts ---
         feedback_timeout_s=0.15,
         bus_silence_timeout_s=0.40,
-        startup_timeout_s=5.0,
-        startup_poll_s=0.01,
-        zero_feedback_timeout_s=1.5,
-        zero_position_tolerance_deg=5.0,
-        max_search_time_s=10.0,
-        max_search_travel_deg=220.0,
+
+        # --- Misc ---
         status_period_s=0.5,
         safe_idle_kp=48.0,
         safe_idle_kd=0.8,
+
         nudge_position_tolerance_deg=2.0,
-        nudge_settle_time_s=0.12,
-        search_max_vel_deg_s=100.0,
-        search_max_acc_deg_s2=140.0,
-        continuous_search_vel_deg_s=40.0,
-        nudge_max_vel_deg_s=60.0,
-        nudge_max_acc_deg_s2=168.0,
-        advance_target_tolerance_deg=2.0,
-        advance_settle_time_s=0.20,
-        stall_progress_epsilon_deg=0.25,
-        stall_timeout_s=0.50,
-        wait_log_period_s=1.0,
-        contact_hold_offset_deg=0.5,
-        contact_release_move_deg=3.0,
-        contact_stall_vel_max=2.0,
+        nudge_settle_time_s=0.10,
     )
 
     rt0 = None

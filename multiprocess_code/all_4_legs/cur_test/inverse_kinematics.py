@@ -20,20 +20,20 @@ L3 = 21.5
 
 LEG_CALIBRATION = {
     "fr": {
-        "coords":    (-9.094, 11.0, 9.0),
-        "motor_deg": (85.0, -110.0, 4.0),
+        "coords":    (-9.094, 11.0, 13.0),
+        "motor_deg": (89.0, -110.0, 8.0),
     },
     "fl": {
-        "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (87.0, -110.0, 4.0),   # ← fl theta1 is 62, not 60
+        "coords":    (-9.094, 11.0, 13.0),   # ← fill actual measured coords
+        "motor_deg": (90.0, -110.0, 5.0),   # ← fl theta1 is 62, not 60
     },
     "br": {
-        "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (90.0, -95.0, 4.0),   # ← fill actual motor angles
+        "coords":    (-9.094, 11.0, 13.0),   # ← fill actual measured coords
+        "motor_deg": (90.0, -98.0, 6.0),   # ← fill actual motor angles
     },
     "bl": {
-        "coords":    (-9.094, 11.0, 9.0),   # ← fill actual measured coords
-        "motor_deg": (83.0, -95.0, 4.0),   # ← fill actual motor angles
+        "coords":    (-9.094, 11.0, 13.0),   # ← fill actual measured coords
+        "motor_deg": (85.0, -98.0, 8.0),   # ← fill actual motor angles
     },
 }
 
@@ -156,6 +156,8 @@ def ik_to_motor_deg(x, y, z, offsets: dict, leg: str) -> tuple:
     """
     t1, t2, t3 = inverse_kinematics(x, y, z)
     leg_offsets = offsets[leg]
+    print("From Raw IK: ", math.degrees(t1), math.degrees(t2), math.degrees(t3))
+
     return (
         math.degrees(t1) + leg_offsets[0],
         math.degrees(t2) + leg_offsets[1],
@@ -194,3 +196,4 @@ if __name__ == "__main__":
             print(f"  {leg.upper():<6} {m1:>10.3f}° {m2:>10.3f}° {m3:>10.3f}°")
         except ValueError as e:
             print(f"  {leg.upper():<6} ERROR: {e}")
+

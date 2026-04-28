@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # temperature_C for temperature
+import sys
 import json
 import multiprocessing as mp
 import pickle
@@ -38,7 +39,6 @@ LEG_TO_MOTOR_IDS: Dict[str, List[int]] = {
 # test_sender.py and any other client that omits "speed" will use this value.
 MAX_LIVE_DEG_PER_S = 120
 
-CALIBRATION_REQUIRED = False
 
 CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_currents.csv"
 CURRENT_LOG_HZ = 5.0
@@ -48,30 +48,45 @@ TEMP_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_
 TEMP_LOG_HZ = 5.0
 TEMP_LOG_DT = 1.0 / TEMP_LOG_HZ
 
+# ─── CLI ──────────────────────────────────────────────────────────────────────
+
+def parse_calibration_flag() -> bool:
+    if len(sys.argv) < 2:
+        return False
+    arg = sys.argv[1].strip().lower()
+    if arg == "y":
+        return True
+    elif arg == "n":
+        return False
+    else:
+        print(f"Unknown argument '{arg}'. Use 'y' or 'n'. Defaulting to False.")
+        return False
+
+
 
 CAN_CONFIG: Dict[str, Dict[str, List[HomingMotorConfig]]] = {
     "can0": {
         "phase1": [
-            HomingMotorConfig(5, -60.0, -1.0, 4.0,  65.0),
-            HomingMotorConfig(6,  10.0,  1.0, 5.0, -38.0),
-            HomingMotorConfig(4,  60.0,  1.0, 4.0, -60.0),
+            HomingMotorConfig(5, -60.0, -1.0, 4.5, 65.0),
+            HomingMotorConfig(6, 10.0, 1.0, 3.5, -38.0),
+            HomingMotorConfig(4, 60.0, 1.0, 4.5, -90.0),
         ],
         "phase2": [
-            HomingMotorConfig(2, -60.0, -1.0, 4.0,  65.0),
-            HomingMotorConfig(3,  10.0,  1.0, 4.5, -38.0),  # 4th val from 5 changed by dan
-            HomingMotorConfig(1,  60.0,  1.0, 4.0, -60.0),  # 4th val from 4 changed by dan
+            HomingMotorConfig(2, -60.0, -1.0, 4.5, 65.0),
+            HomingMotorConfig(3, 10.0, 1.0, 3.5, -38.0),#4th val from 5 changed by dan
+            HomingMotorConfig(1, 60.0, 1.0, 4.5, -85.0),#4th val from 4 changed by dan
         ],
     },
     "can1": {
         "phase1": [
-            HomingMotorConfig(8,  60.0,  1.0, 4.0, -65.0),
-            HomingMotorConfig(9, -10.0, -1.0, 5.0,  38.0),
-            HomingMotorConfig(7, -60.0, -1.0, 4.0,  60.0),
+            HomingMotorConfig(8, 60.0, 1.0, 4.5, -65.0),
+            HomingMotorConfig(9, -10.0, -1.0, 3.5, 38.0),
+            HomingMotorConfig(7, -60.0, -1.0, 4.5, 80.0),
         ],
         "phase2": [
-            HomingMotorConfig(11,  60.0,  1.0, 4.0, -65.0),
-            HomingMotorConfig(12, -10.0, -1.0, 5.0,  38.0),
-            HomingMotorConfig(10, -60.0, -1.0, 4.0,  60.0),
+            HomingMotorConfig(11, 60.0, 1.0, 4.5, -65.0),
+            HomingMotorConfig(12, -10.0, -1.0, 4.0, 38.0),
+            HomingMotorConfig(10, -60.0, -1.0, 4.5, 90.0),
         ],
     },
 }
@@ -372,7 +387,7 @@ def current_logger_thread_entry(
     motor_ids = list(range(1, 13))
 
     try:
-        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+        with open(log_path, "w", buffering=1, encoding="utf-8") as fh:
             fh.seek(0, 2)
             if fh.tell() == 0:
                 header = "timestamp_s," + ",".join(f"m{i}_a" for i in motor_ids)
@@ -426,7 +441,7 @@ def temp_logger_thread_entry(
     motor_ids = list(range(1, 13))
 
     try:
-        with open(log_path, "a", buffering=1, encoding="utf-8") as fh:
+        with open(log_path, "w", buffering=1, encoding="utf-8") as fh:
             fh.seek(0, 2)
             if fh.tell() == 0:
                 header = "timestamp_s," + ",".join(f"m{i}_c" for i in motor_ids)
@@ -622,6 +637,7 @@ def run_post_homing_live_control(
 
 def main():
     time.sleep(3)
+    CALIBRATION_REQUIRED = parse_calibration_flag()
     print("=" * 70)
     print("🤖 AK60 | 4-LEG HOMING | 12 MOTORS | 2 CAN BUSES")
     if CALIBRATION_REQUIRED:

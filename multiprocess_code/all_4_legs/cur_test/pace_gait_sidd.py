@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-byte01_trot_gait.py
+pace_gait_node_sid.py
 ════════════════════════════════════════════════════════════════════════════════
-BYTE-01 Trot Gait — Interactive Terminal Controller
-(Phase-based cycloidal gait, ported from trot_gait_node.py)
+BYTE-01 Pace Gait — Interactive Terminal Controller
+(Phase-based cycloidal gait, derived from trot_gait_node_sid.py)
 IK is handled externally — this file sends raw XYZ foot targets over socket.
 
 Startup: sends SITTING → smoothly transitions to STANDING
 
 Commands:
-  f          → trot forward  1 full cycle
-  ff         → trot forward  continuously  (press y to stop)
-  b          → trot backward 1 full cycle
-  bb         → trot backward continuously  (press y to stop)
+  f          → pace forward  1 full cycle
+  ff         → pace forward  continuously  (press y to stop)
+  b          → pace backward 1 full cycle
+  bb         → pace backward continuously  (press y to stop)
   r          → strafe right  1 full cycle
   rr         → strafe right  continuously  (press y to stop)
   l          → strafe left   1 full cycle
@@ -36,11 +36,14 @@ Stance phase (local phase s ∈ [0, 1]):
   z(s) = z0 + S/2 - S*s                            ← linear pushback
   y(s) = y0 - Hg * sin(πs)                         ← small ground push
 
-Trot diagonal pairing:
-  Pair A  (FL + BR) : phase offset 0.0
-  Pair B  (FR + BL) : phase offset 0.5
+Pace ipsilateral pairing:
+  Pair A  (FL + BL) : phase offset 0.0   ← LEFT  side
+  Pair B  (FR + BR) : phase offset 0.5   ← RIGHT side
   phase ∈ [0.0, 0.5) → swing
   phase ∈ [0.5, 1.0) → stance
+
+  Effect: left legs swing while right legs stance, then swap.
+  Robot rocks laterally — less stable than trot but valid quadruped gait.
 """
 
 import math
@@ -60,15 +63,14 @@ SITTING_XYZ  = [-9.094, 11.0, 10.0]
 STANDING_XYZ = [-9.094, 25.0, 10.0]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GAIT PARAMETERS  (from trot_gait_node.py — tune these)
+# GAIT PARAMETERS
 # ─────────────────────────────────────────────────────────────────────────────
-STRIDE_LENGTH  = 8.0     # cm  — S,  total fore-aft foot travel per cycle
+STRIDE_LENGTH  = 3.0     # cm  — S,  total fore-aft foot travel per cycle
 STRIDE_X       = 4.0     # cm  — lateral stride for strafe
-LIFT_HEIGHT    = 5.0     # cm  — H,  half peak lift (actual peak = y0 + 2H)
+LIFT_HEIGHT    = 1.0     # cm  — H,  half peak lift (actual peak = y0 + 2H)
 GROUND_PUSH    = 0.2     # cm  — Hg, downward stance push
-GAIT_FREQUENCY = 2.0   # Hz  — full cycle rate
+GAIT_FREQUENCY = 2.5      # Hz  — full cycle rate
 UPDATE_HZ      = 100.0   # Hz  — send rate
-
 
 GAIT_SPEED_DEG_PER_S       = 800.0   # deg/s — used during gait frames
 TRANSITION_SPEED_DEG_PER_S = 120.0   # deg/s — used during sit / stand
@@ -76,13 +78,16 @@ TRANSITION_SPEED_DEG_PER_S = 120.0   # deg/s — used during sit / stand
 Y_LIFT_SIGN = -1   # -1 because on real hardware smaller Y = foot higher
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PHASE OFFSETS  (trot diagonal pairs — from trot_gait_node.py)
+# PHASE OFFSETS  ← THE ONLY CHANGE FROM TROT
+#   Pace pairs same-side (ipsilateral) legs:
+#     Left  pair: FL + BL → offset 0.0
+#     Right pair: FR + BR → offset 0.5
 # ─────────────────────────────────────────────────────────────────────────────
 PHASE_OFFSET = {
-    "fl": 0.0,   # ─┐ Pair A
-    "br": 0.0,   # ─┘
-    "fr": 0.5,   # ─┐ Pair B
-    "bl": 0.5,   # ─┘
+    "fl": 0.0,   # ─┐ Pair A — LEFT side
+    "bl": 0.0,   # ─┘
+    "fr": 0.5,   # ─┐ Pair B — RIGHT side
+    "br": 0.5,   # ─┘
 }
 
 ALL_LEGS = ["fl", "fr", "bl", "br"]
@@ -138,7 +143,7 @@ def smooth_transition(target_xyz: list, duration: float = 1.2):
         current_pos[leg] = list(target_xyz)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PHASE-BASED FOOT POSITION  (core logic from trot_gait_node._foot_pos)
+# PHASE-BASED FOOT POSITION  (identical logic to trot — PHASE_OFFSET does the work)
 # ─────────────────────────────────────────────────────────────────────────────
 def _foot_pos_phase(leg: str, phase: float, axis: str, direction: int) -> list:
     """
@@ -248,7 +253,7 @@ def run_continuous(axis: str, direction: int, label: str):
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
     print("╔══════════════════════════════════════════════════╗")
-    print("║     BYTE-01 Trot Gait Controller                 ║")
+    print("║     BYTE-01 Pace Gait Controller                 ║")
     print("╠══════════════════════════════════════════════════╣")
     print(f"║  STRIDE_LENGTH (S)     = {STRIDE_LENGTH} cm                  ║")
     print(f"║  LIFT_HEIGHT   (H)     = {LIFT_HEIGHT} cm  (peak = {2*LIFT_HEIGHT} cm)  ║")
@@ -259,7 +264,7 @@ def main():
     print(f"║  GAIT_SPEED            = {GAIT_SPEED_DEG_PER_S:.0f} deg/s             ║")
     print(f"║  TRANSITION_SPEED      = {TRANSITION_SPEED_DEG_PER_S:.0f} deg/s             ║")
     print(f"║  Cycle duration        = {1.0/GAIT_FREQUENCY:.2f} s               ║")
-    print(f"║  Trajectory            = CYCLOIDAL (centered)    ║")
+    print(f"║  Pairing               = PACE (FL+BL | FR+BR)   ║")
     print("╠══════════════════════════════════════════════════╣")
     print("║  f   → forward  1 cycle     ff  → forward  cont. ║")
     print("║  b   → backward 1 cycle     bb  → backward cont. ║")
@@ -278,7 +283,7 @@ def main():
 
     print("● Transitioning to STANDING pose...")
     smooth_transition(STANDING_XYZ, duration=1.5)
-    leveler.level_after_stand()    
+    leveler.level_after_stand()
     print("● Standing — ready for commands.\n")
 
     while True:
