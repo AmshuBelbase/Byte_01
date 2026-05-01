@@ -28,7 +28,7 @@ from main_with_ik import (
 
 LIVE_QUEUE_MAXSIZE = 1
 MOTOR_CONFIG_PATH = "motor_config.json"
-MAX_LIVE_DEG_PER_S = 60.0  # Kept slow for safe testing
+MAX_LIVE_DEG_PER_S = 30.0  # Kept slow for safe testing
 
 def validate_joint_payload(payload: Any) -> Tuple[Dict[int, float], Optional[float]]:
     """Validates payload dict of {motor_id: target_deg}"""
