@@ -3,9 +3,7 @@
 import pickle
 import socket
 import time
-
-HOST = "10.196.200.34"
-PORT = 50000
+from robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER
 
 '''
 # ── CHANGE THIS to test ──────────────────────────────────────────────────────
@@ -23,12 +21,8 @@ HOLD_SECONDS  = 3.0                         # how long to hold the position
 transformed_coords = [dx, dy, dz]           # convert to robot's ik coordinate system (+x forward, +y right, +z up)
 # transformed_coords = [dy, -dz, -dx]       # convert to robot's ik coordinate system (+x right, +y down, +z back) (-x left, -y up, -z forward)
 
-payload = {
-    "fl": list(transformed_coords),
-    "bl": list(transformed_coords),
-    "fr": list(transformed_coords),
-    "br": list(transformed_coords),
-}
+# Dynamically create the payload for all legs using the central config
+payload = {leg: list(transformed_coords) for leg in LEG_ORDER}
 
 #payload[TARGET_LEG] = list(TARGET_COORDS)  # only move this one leg
 
@@ -39,7 +33,7 @@ print(f"All other legs hold sitting position.")
 data = pickle.dumps(payload)
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.connect((HOST, PORT))
+    s.connect((SOCKET_HOST, SOCKET_PORT))
     s.sendall(data)
 
 print(f"Sent. Holding for {HOLD_SECONDS}s... watch the leg.")

@@ -14,16 +14,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from can_runtime import BusRuntime
 from homing_controller import BusHomingController, ControlTuning, HomingMotorConfig
-
 from inverse_kinematics import calculate_each_motor_angles
+from robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER, SIT_COORDS, SIT_TARGETS_DEG
 
-LIVE_SOCKET_HOST = "10.196.200.34" #127.0.0.1
-LIVE_SOCKET_PORT = 50000
 LIVE_QUEUE_MAXSIZE = 1
 MOTOR_CONFIG_PATH = "motor_config.json"
 
 
-LEG_ORDER: Tuple[str, str, str, str] = ("fl", "bl", "fr", "br")
+
 LegPayload = Dict[str, List[float]]
 MotorCommandConfig = Dict[int, Dict[str, float | bool]]
 
@@ -481,8 +479,8 @@ def temp_logger_thread_entry(
 def socket_listener_process(
     dest_queue: MpQueue,
     stop_event: MpEvent,
-    port: int = LIVE_SOCKET_PORT,
-    host: str = LIVE_SOCKET_HOST,
+    port: int = SOCKET_PORT,
+    host: str = SOCKET_HOST,
 ):
     print(f"[Socket Process {mp.current_process().pid}] Starting on {host}:{port}", flush=True)
 
@@ -574,7 +572,7 @@ def run_post_homing_live_control(
     print("   1. Holding at homed nudge positions for 1 second...")
     print("   2. Smoothly transitioning to default sitting posture...")
     print("   3. Zeroing all motors at the sit posture (New 0.0)...")
-    print(f"   4. Waiting for grouped socket targets on {LIVE_SOCKET_HOST}:{LIVE_SOCKET_PORT}")
+    print(f"   4. Waiting for grouped socket targets on {SOCKET_HOST}:{SOCKET_PORT}")
     print("=" * 70)
 
     # --- PHASE 1: HOLD AT NUDGE FOR 1 SECOND ---
@@ -600,13 +598,6 @@ def run_post_homing_live_control(
     # --- PHASE 2: MOVE TO SITTING TARGETS ---
     print("🛋️  1 second elapsed. Moving to default sitting angles...")
     
-    sit_targets_deg = {
-        1: 90.0,  2: -110.0, 3: 5.0,    # fl
-        4: 85.0,  5: -98.0,  6: 8.0,    # bl
-        7: 89.0,  8: -110.0, 9: 8.0,    # fr
-        10: 90.0, 11: -98.0, 12: 6.0    # br
-    }
-
     arrived_at_sit = False
     while not arrived_at_sit and not stop_event.is_set():
         rt0.refresh_watchdogs(
@@ -626,12 +617,12 @@ def run_post_homing_live_control(
         for motor_id in range(1, 13):
             live_cmd_deg[motor_id] = limit_target_step(
                 current_cmd_deg=live_cmd_deg[motor_id],
-                requested_deg=sit_targets_deg[motor_id],
+                requested_deg=SIT_TARGETS_DEG[motor_id],
                 max_deg_per_s=MAX_LIVE_DEG_PER_S * motor_config[motor_id]["gear_ratio"],
                 dt=tuning.loop_dt,
             )
             # If any motor hasn't reached its sit target, we haven't arrived yet
-            if abs(live_cmd_deg[motor_id] - sit_targets_deg[motor_id]) > 0.001:
+            if abs(live_cmd_deg[motor_id] - SIT_TARGETS_DEG[motor_id]) > 0.001:
                 arrived_at_sit = False
 
         send_live_targets(rt0, rt1, live_cmd_deg, motor_config)
@@ -651,13 +642,9 @@ def run_post_homing_live_control(
     # Start our live tracking at 0.0 for all motors
     last_live_targets_deg = {i: 0.0 for i in range(1, 13)}
 
-    # Initialize the baseline Cartesian coordinates (matching the IK physical sitting posture)
-    current_leg_coords = {
-        "fl": [-9.094, 5.0, -30.0],
-        "bl": [-9.094, -5.0, -30.0],
-        "fr": [-9.094, 5.0, -30.0],
-        "br": [-9.094, -5.0, -30.0]
-    }
+    # Dynamically build current_leg_coords from our central SIT_COORDS. 
+    # We cast to list() because tuples are immutable, and Phase 4 needs to add offsets to them.
+    current_leg_coords = {leg: list(coords) for leg, coords in SIT_COORDS.items()}
 
     # Wait for the CAN bus feedback frames to update with the new 0 positions
     time.sleep(1.0)
@@ -909,7 +896,7 @@ def main():
         live_socket_stop = mp.Event()
         live_socket_process = mp.Process(
             target=socket_listener_process,
-            args=(live_queue, live_socket_stop, LIVE_SOCKET_PORT, LIVE_SOCKET_HOST),
+            args=(live_queue, live_socket_stop, SOCKET_PORT, SOCKET_HOST),
             daemon=True,
         )
         live_socket_process.start()

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import math
 import numpy as np
+# IMPORT SHARED CONFIG
+from robot_config import SIT_COORDS, LEG_ORDER
+
 
 # ─── Kinematics Class ────────────────────────────────────────────────────────
 class RoboticLeg:
@@ -69,14 +72,6 @@ leg_solver = RoboticLeg()
 # Flip and gear_ratio are handled downstream via motor_config.json — not here.
 # Right legs and left legs can differ due to mechanical assembly variations.
 
-# ─── Sit Co-ords and Leg IDs ─────────────────────────────────────────────────
-sit_coords = {
-    "fl": (-9.094, 5.0, -30.0),
-    "bl": (-9.094, -5.0, -30.0),
-    "fr": (-9.094, 5.0, -30.0),
-    "br": (-9.094, -5.0, -30.0)
-}
-
 # Leg IDs: front-left, back-left, front-right, back-right
 legs = ["fl", "bl", "fr", "br"]
 
@@ -96,11 +91,11 @@ def ik_to_motor_deg(t1, t2, t3, leg):
     Raises:
         ValueError if leg is invalid
     """
-    if leg not in legs:
-        raise ValueError(f"Invalid leg '{leg}'. Must be one of {legs}.")
+    if leg not in LEG_ORDER:
+        raise ValueError(f"Invalid leg '{leg}'. Must be one of {LEG_ORDER}.")
 
     # Get the "zero position" angles for this specific leg's sitting posture
-    c1, c2, c3 = leg_solver.inverse_kinematics(*sit_coords[leg])
+    c1, c2, c3 = leg_solver.inverse_kinematics(*SIT_COORDS[leg])
 
     # Calculate the delta (t1, c1, etc. are already in degrees from the class)
     m1 = t1 - c1
