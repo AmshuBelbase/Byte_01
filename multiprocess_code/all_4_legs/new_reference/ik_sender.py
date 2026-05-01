@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+
+import pickle
+import socket
+import time
+
+HOST = "10.196.200.34"
+PORT = 50000
+
+'''
+# ── CHANGE THIS to test ──────────────────────────────────────────────────────
+TARGET_LEG = "fr"               # which leg to move: fl, bl, fr, br  
+# ────────────────────────────────────────────────────────────────────────────
+'''
+
+# how much to shift the leg's foot position in cm (relative to current pose coords)
+dx = 0.0 # +x forward, -x backward
+dy = 0.0 # +y right, -y left
+dz = 0.0 # +z up, -z down
+
+
+HOLD_SECONDS  = 3.0                         # how long to hold the position
+transformed_coords = [dx, dy, dz]           # convert to robot's ik coordinate system (+x forward, +y right, +z up)
+# transformed_coords = [dy, -dz, -dx]       # convert to robot's ik coordinate system (+x right, +y down, +z back) (-x left, -y up, -z forward)
+
+payload = {
+    "fl": list(transformed_coords),
+    "bl": list(transformed_coords),
+    "fr": list(transformed_coords),
+    "br": list(transformed_coords),
+}
+
+#payload[TARGET_LEG] = list(TARGET_COORDS)  # only move this one leg
+
+# No "speed" key → main_with_ik.py uses its safe default MAX_LIVE_DEG_PER_S
+
+print(f"All other legs hold sitting position.")
+
+data = pickle.dumps(payload)
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.connect((HOST, PORT))
+    s.sendall(data)
+
+print(f"Sent. Holding for {HOLD_SECONDS}s... watch the leg.")
+time.sleep(HOLD_SECONDS)
+print("Done.")
