@@ -25,15 +25,16 @@ class RoboticLeg:
 
         return X, Y, Z
 
-    def inverse_kinematics(self, X, Y, Z):
-        # --- AUTO-DETECT LEG CONFIGURATION ---
-        # If Y is negative, it's a Left Leg. If positive, it's a Right Leg.
-        if Y < 0:
+    def inverse_kinematics(self, X, Y, Z, leg_id):
+        # "fl" and "bl" are left legs. "fr" and "br" are right legs.
+        if leg_id in ["fl", "bl"]:
             shoulder_dir = -1
             knee_dir = 1
-        else:
+        elif leg_id in ["fr", "br"]:
             shoulder_dir = 1
             knee_dir = -1
+        else:
+            raise ValueError(f"Invalid leg_id passed to IK solver: {leg_id}")
 
         # 1. Calculate Backward Extension (Le)
         Le = -X - self.L1
@@ -69,6 +70,12 @@ class RoboticLeg:
 # Instantiate the solver globally for the script to use
 leg_solver = RoboticLeg()
 
+# --- Pre-compute the sit coordinates ONCE ---
+PRECOMPUTED_SIT_ANGLES = {}
+for _leg in LEG_ORDER:
+    # This calculates the (c1, c2, c3) baseline angles for each leg's sitting position
+    PRECOMPUTED_SIT_ANGLES[_leg] = leg_solver.inverse_kinematics(*SIT_COORDS[_leg], _leg)
+
 # Flip and gear_ratio are handled downstream via motor_config.json — not here.
 # Right legs and left legs can differ due to mechanical assembly variations.
 
@@ -95,7 +102,8 @@ def ik_to_motor_deg(t1, t2, t3, leg):
         raise ValueError(f"Invalid leg '{leg}'. Must be one of {LEG_ORDER}.")
 
     # Get the "zero position" angles for this specific leg's sitting posture
-    c1, c2, c3 = leg_solver.inverse_kinematics(*SIT_COORDS[leg])
+    # c1, c2, c3 = leg_solver.inverse_kinematics(*SIT_COORDS[leg])
+    c1, c2, c3 = PRECOMPUTED_SIT_ANGLES[leg]  # use pre-computed sit angles for efficiency
 
     # Calculate the delta (t1, c1, etc. are already in degrees from the class)
     m1 = t1 - c1
@@ -113,7 +121,7 @@ def calculate_each_motor_angles(x, y, z, leg):
         Tuple of (m1, m2, m3) relative motor angles in degrees for the leg.
     """
     # compute target angles for foot position (returns degrees)
-    t1, t2, t3 = leg_solver.inverse_kinematics(x, y, z) 
+    t1, t2, t3 = leg_solver.inverse_kinematics(x, y, z, leg) 
     
     # convert to relative motor angles
     m1, m2, m3 = ik_to_motor_deg(t1, t2, t3, leg) 
@@ -149,8 +157,8 @@ def calculate_motor_angles(coords_dict):
 # ─── Entry Point (testing only) ──────────────────────────────────────────────
 if __name__ == "__main__":
     # First test: compute motor angles for target foot position for front-left leg only
-    # Note: Passing the exact sit_coords should yield exactly (0.0, 0.0, 0.0)
-    target_coords = sit_coords["fl"]
+    # Note: Passing the exact SIT_COORDS should yield exactly (0.0, 0.0, 0.0)
+    target_coords = SIT_COORDS["fl"]
     motor_angles = calculate_each_motor_angles(*target_coords, leg="fl")
     print(f"Front-left leg motor angles (degrees) = {motor_angles}")
 
