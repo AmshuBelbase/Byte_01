@@ -1,7 +1,7 @@
 # robot_config.py
 
 # ─── Network Settings ────────────────────────────────────────────────────────
-SOCKET_HOST = "10.196.200.34" #127.0.0.1
+SOCKET_HOST = "10.230.252.34" #127.0.0.1
 SOCKET_PORT = 50000
 
 # ─── Leg Identifiers ─────────────────────────────────────────────────────────
@@ -10,10 +10,10 @@ LEG_ORDER = ("fl", "bl", "fr", "br")
 # ─── Sitting Cartesian Coordinates (X, Y, Z in cm) ───────────────────────────
 # Used by Inverse Kinematics and as the baseline for live socket tracking.
 SIT_COORDS = {
-    "fl": (-9.094, 5.0, -30.0),
-    "bl": (-9.094, -5.0, -30.0),
-    "fr": (-9.094, 5.0, -30.0),
-    "br": (-9.094, -5.0, -30.0)
+    "fl": (-13.60, -9.09, -15.21),
+    "bl": (-13.03, -9.09, -14.00),
+    "fr": (-12.76, 9.09, -14.05),
+    "br": (-14.46, 9.09, -16.71)
 }
 
 # ─── Physical Sitting Motor Angles (Degrees) ─────────────────────────────────
