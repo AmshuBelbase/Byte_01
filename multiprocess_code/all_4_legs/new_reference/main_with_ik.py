@@ -12,13 +12,13 @@ from multiprocessing.queues import Queue as MpQueue
 from multiprocessing.synchronize import Event as MpEvent
 from typing import Any, Dict, List, Optional, Tuple
 
-from can_runtime import BusRuntime
-from homing_controller import BusHomingController, ControlTuning, HomingMotorConfig
-from inverse_kinematics import calculate_each_motor_angles
-from robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER, SIT_COORDS, SIT_TARGETS_DEG
+from lib.can_runtime import BusRuntime
+from lib.homing_controller import BusHomingController, ControlTuning, HomingMotorConfig
+from lib.inverse_kinematics import calculate_each_motor_angles
+from config.robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER, SIT_COORDS, SIT_TARGETS_DEG
 
 LIVE_QUEUE_MAXSIZE = 1
-MOTOR_CONFIG_PATH = "motor_config.json"
+MOTOR_CONFIG_PATH = "config/motor_config.json"
 
 
 
@@ -38,11 +38,11 @@ LEG_TO_MOTOR_IDS: Dict[str, List[int]] = {
 MAX_LIVE_DEG_PER_S = 120
 
 
-CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_currents.csv"
+CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/logs/motor_currents.csv"
 CURRENT_LOG_HZ = 5.0
 CURRENT_LOG_DT = 1.0 / CURRENT_LOG_HZ
 
-TEMP_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/motor_temps.csv"
+TEMP_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/logs/motor_temps.csv"
 TEMP_LOG_HZ = 5.0
 TEMP_LOG_DT = 1.0 / TEMP_LOG_HZ
 

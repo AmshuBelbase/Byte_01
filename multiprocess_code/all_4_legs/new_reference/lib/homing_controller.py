@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
-from can_runtime import BusRuntime
+from lib.can_runtime import BusRuntime
 
 
 @dataclass(frozen=True)

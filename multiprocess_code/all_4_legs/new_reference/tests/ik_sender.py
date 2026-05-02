@@ -3,7 +3,11 @@
 import pickle
 import socket
 import time
-from robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER
+
+# Note: Run this by this command: python3 -m tests.ik_sender
+# This ensures the imports work correctly relative to config
+
+from config.robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER
 
 '''
 # ── CHANGE THIS to test ──────────────────────────────────────────────────────
@@ -14,7 +18,7 @@ TARGET_LEG = "fr"               # which leg to move: fl, bl, fr, br
 # how much to shift the leg's foot position in cm (relative to current pose coords)
 dx = 0.0 # +x forward, -x backward
 dy = 0.0 # +y right, -y left
-dz = 14.0 # +z up, -z down  # make +14 to stand (from 0 position)
+dz = 0.0 # +z up, -z down  # make +14 to stand (from 0 position)
 
 
 HOLD_SECONDS  = 3.0                         # how long to hold the position

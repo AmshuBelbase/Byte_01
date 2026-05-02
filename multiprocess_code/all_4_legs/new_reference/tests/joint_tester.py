@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# Note: Run this by this command: python3 -m tests.joint_tester
+# This ensures the imports work correctly relative to other folders
+
 import multiprocessing as mp
 import pickle
 import queue
@@ -8,9 +11,10 @@ import threading
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from can_runtime import BusRuntime
-from homing_controller import ControlTuning
-from robot_config import SOCKET_HOST, SOCKET_PORT
+
+from lib.can_runtime import BusRuntime
+from lib.homing_controller import ControlTuning
+from config.robot_config import SOCKET_HOST, SOCKET_PORT
 from main_with_ik import (
     CAN_CONFIG, 
     collect_motor_ids,

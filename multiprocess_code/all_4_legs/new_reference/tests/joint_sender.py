@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
+# Note: Run this by this command: python3 -m tests.joint_sender
+# This ensures the imports work correctly relative to config
+
 import pickle
 import socket
-from robot_config import SOCKET_HOST, SOCKET_PORT
+from config.robot_config import SOCKET_HOST, SOCKET_PORT
 
 print("=== INTERACTIVE JOINT TESTER ===")
 print("Type 'q' to quit at any time.\n")

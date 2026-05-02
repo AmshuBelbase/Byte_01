@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 
 import can
 
-from ak60_v3_control import AK60V3Motor
+from lib.ak60_v3_control import AK60V3Motor
 
 
 class FaultCode(Enum):
