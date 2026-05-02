@@ -3,7 +3,7 @@
     "1": {
       "kp": 400.0,
       "kd": 1.5,
-      "flipped": false,
+      "flipped": true,
       "gear_ratio": 1.0
     },
     "2": {
@@ -21,7 +21,7 @@
     "4": {
       "kp": 400.0,
       "kd": 1.5,
-      "flipped": false,
+      "flipped": true,
       "gear_ratio": 1.0
     },
     "5": {
@@ -39,7 +39,7 @@
     "7": {
       "kp": 400.0,
       "kd": 1.5,
-      "flipped": true,
+      "flipped": false,
       "gear_ratio": 1.0
     },
     "8": {
@@ -57,7 +57,7 @@
     "10": {
       "kp": 400.0,
       "kd": 1.5,
-      "flipped": true,
+      "flipped": false,
       "gear_ratio": 1.0
     },
     "11": {
