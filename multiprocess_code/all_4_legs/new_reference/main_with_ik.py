@@ -61,9 +61,16 @@ def parse_calibration_flag() -> bool:
         return False
 
 
-
+# Homing Uses Raw Hardware Values - No transformation to these angles is done downstream 
 CAN_CONFIG: Dict[str, Dict[str, List[HomingMotorConfig]]] = {
     "can0": {
+        # HomingMotorConfig(motor_id, target_deg, search_direction_deg, trigger_current_A, nudge_back_deg)
+        # ------------------------------------------------------------------------------------------------
+        # motor_id             : The physical CAN ID of the motor.
+        # target_deg           : The initial relative angle to travel towards to find the hard stop.
+        # search_direction_deg : The direction to keep creeping if the stop isn't found immediately (-1.0 = negative, 1.0 = positive).
+        # trigger_current_A    : The current spike threshold (Amps) that tells the script it has physically hit the hard stop.
+        # nudge_back_deg       : The raw encoder degrees to back away from the hard stop before locking in the final 0.0 position.
         "phase1": [
             HomingMotorConfig(5, -60.0, -1.0, 4.5, 65.0),
             HomingMotorConfig(6, 10.0, 1.0, 3.5, -38.0),
