@@ -18,9 +18,11 @@ SIT_COORDS = {
 
 # ─── Physical Sitting Motor Angles (Degrees) ─────────────────────────────────
 # The absolute hardware angles the motors must reach BEFORE zeroing.
+# will not be transformed as per motor_config.json
+
 SIT_TARGETS_DEG = {
-    1: 85.0,  2: -114.0, 3: 6.0,    # fl
-    4: 85.0,  5: -98.0,  6: 9.0,    # bl
-    7: 85.0,  8: -114.0, 9: 4.0,    # fr
-    10: 85.0, 11: -98.0, 12: 10.0   # br
+    1: -85.0,  2: 114.0, 3: -9.0,    # fl - flipped and gear ratio applied
+    4: -85.0,  5: 114.0, 6: -3.0,    # bl - flipped and gear ratio applied
+    7: 85.0,  8: -114.0, 9: 6.0,    # fr
+    10: 85.0, 11: -116.0, 12: 9.0   # br
 }

@@ -635,9 +635,6 @@ def run_post_homing_live_control(
         send_live_targets(rt0, rt1, live_cmd_deg, motor_config)
         time.sleep(tuning.loop_dt)
 
-    # Let the physical motors settle mechanically for a brief moment
-    time.sleep(0.5)
-
     # --- PHASE 3: ZERO ALL MOTORS ---
     print("🔄 Reached sitting angles. Triggering temporary zero on all motors...")
     
