@@ -2,7 +2,7 @@
 import math
 import numpy as np
 # IMPORT SHARED CONFIG
-from robot_config import SIT_COORDS, LEG_ORDER
+from config.robot_config import SIT_COORDS, LEG_ORDER
 
 
 # ─── Kinematics Class ────────────────────────────────────────────────────────
