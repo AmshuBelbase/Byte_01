@@ -2,37 +2,49 @@
 
 import pickle
 import socket
-import time
 from robot_config import SOCKET_HOST, SOCKET_PORT
 
-# ── CHANGE THIS TO TEST A MOTOR ──────────────────────────────────────────────
-TEST_MOTOR_ID = 8         # e.g., Motor 8 (Front-Right Hip Pitch)
-TARGET_ANGLE = 15.0       # Move it 15 degrees mathematically (+ or -)
-# ────────────────────────────────────────────────────────────────────────────
+print("=== INTERACTIVE JOINT TESTER ===")
+print("Type 'q' to quit at any time.\n")
 
-HOLD_SECONDS = 3.0
+while True:
+    try:
+        # 1. Get Motor ID
+        mid_str = input("Enter Motor ID (1-12): ").strip()
+        if mid_str.lower() == 'q': 
+            break
+        
+        motor_id = int(mid_str)
+        if not 1 <= motor_id <= 12:
+            print("Invalid Motor ID. Must be between 1 and 12.")
+            continue
 
-# Initialize all 12 motors to mathematical 0.0 (sitting position)
-payload = {mid: 0.0 for mid in range(1, 13)}
+        # 2. Get Target Angle
+        angle_str = input(f"Enter target angle for Motor {motor_id} (degrees): ").strip()
+        if angle_str.lower() == 'q': 
+            break
+            
+        target_angle = float(angle_str)
 
-# Override our test motor
-payload[TEST_MOTOR_ID] = TARGET_ANGLE
-payload["speed"] = 30.0  # Very slow, safe speed for testing 
+        # 3. Create a payload with ONLY the target motor
+        # The receiver will hold all other motors at their previous states
+        payload = {
+            motor_id: target_angle,
+            "speed": 30.0  # Safe testing speed
+        }
 
-data = pickle.dumps(payload)
+        # 4. Send the command
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((SOCKET_HOST, SOCKET_PORT))
+            s.sendall(pickle.dumps(payload))
+        
+        print(f"✅ Sent: Motor {motor_id} moving to {target_angle}°\n")
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.connect((SOCKET_HOST, SOCKET_PORT))
-    s.sendall(data)
+    except ValueError:
+        print("❌ Invalid input. Please enter numbers only.")
+    except ConnectionRefusedError:
+        print("❌ Connection refused. Is main_raw_tester.py running?")
+    except KeyboardInterrupt:
+        break
 
-print(f"Sent command: Motor {TEST_MOTOR_ID} -> {TARGET_ANGLE}°")
-print(f"Holding for {HOLD_SECONDS}s... Watch the physical direction carefully.")
-time.sleep(HOLD_SECONDS)
-
-# Automatically return to 0.0 for safety after the test
-payload[TEST_MOTOR_ID] = 0.0
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.connect((SOCKET_HOST, SOCKET_PORT))
-    s.sendall(pickle.dumps(payload))
-
-print("Returned to zero.")
+print("\nExiting sender.")
