@@ -13,7 +13,7 @@ TARGET_LEG = "fr"               # which leg to move: fl, bl, fr, br
 
 # how much to shift the leg's foot position in cm (relative to current pose coords)
 dx = 0.0 # +x forward, -x backward
-dy = 0.0 # +y right, -y left
+dy = -10.0 # +y right, -y left
 dz = 0.0 # +z up, -z down
 
 

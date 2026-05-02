@@ -27,7 +27,7 @@ class RoboticLeg:
 
     def inverse_kinematics(self, X, Y, Z, leg_id):
         # "fl" and "bl" are left legs. "fr" and "br" are right legs.
-        if leg_id in ["fl", "bl"]:
+        if leg_id in ["fl", "bl"]: 
             shoulder_dir = -1
             knee_dir = 1
         elif leg_id in ["fr", "br"]:
@@ -64,6 +64,7 @@ class RoboticLeg:
         t3 = knee_dir * math.acos(cos_t3)
         t2 = math.atan2(Lp, Le) - math.atan2(self.L3 * math.sin(t3), self.L2 + self.L3 * math.cos(t3))
 
+        print("For leg {}, Co-ordinates (cm) = ({:.2f}, {:.2f}, {:.2f}), IK angles (degrees) = ({:.2f}, {:.2f}, {:.2f})".format(leg_id.upper(), X, Y, Z, math.degrees(t1), math.degrees(t2), math.degrees(t3)))
         return math.degrees(t1), math.degrees(t2), math.degrees(t3)
 
 
@@ -109,6 +110,8 @@ def ik_to_motor_deg(t1, t2, t3, leg):
     m1 = t1 - c1
     m2 = t2 - c2
     m3 = t3 - c3
+
+    print(f"Leg {leg.upper()}: Sit IK angles (degrees) = ({c1:.2f}, {c2:.2f}, {c3:.2f}), Relative Motor Angles (degrees) = ({m1:.2f}, {m2:.2f}, {m3:.2f})")
 
     return m1, m2, m3
 

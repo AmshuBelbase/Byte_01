@@ -252,23 +252,23 @@ def flatten_leg_payload(payload: LegPayload) -> List[float]:
     return flat
 
 
-def transform_live_angles(
-    raw_angles_deg: List[float],
-    motor_config: MotorCommandConfig,
-) -> Dict[int, float]:
-    if len(raw_angles_deg) != 12:
-        raise ValueError(f"expected 12 motor angles, received {len(raw_angles_deg)}")
+# def transform_live_angles(
+#     raw_angles_deg: List[float],
+#     motor_config: MotorCommandConfig,
+# ) -> Dict[int, float]:
+#     if len(raw_angles_deg) != 12:
+#         raise ValueError(f"expected 12 motor angles, received {len(raw_angles_deg)}")
 
-    transformed: Dict[int, float] = {}
-    for motor_id, raw_angle_deg in enumerate(raw_angles_deg, start=1):
-        cfg = motor_config[motor_id]
-        angle_deg = float(raw_angle_deg)
-        if bool(cfg["flipped"]):
-            angle_deg = -angle_deg
-        angle_deg *= float(cfg["gear_ratio"])
-        transformed[motor_id] = angle_deg
+#     transformed: Dict[int, float] = {}
+#     for motor_id, raw_angle_deg in enumerate(raw_angles_deg, start=1):
+#         cfg = motor_config[motor_id]
+#         angle_deg = float(raw_angle_deg)
+#         # if bool(cfg["flipped"]):
+#         #     angle_deg = -angle_deg
+#         angle_deg *= float(cfg["gear_ratio"])
+#         transformed[motor_id] = angle_deg
 
-    return transformed
+#     return transformed
 
 
 
@@ -557,7 +557,6 @@ def socket_listener_process(
         server.close()
         print(f"[Socket Process {mp.current_process().pid}] Shutdown", flush=True)
 
-
 def run_post_homing_live_control(
     ctrl0: BusHomingController,
     ctrl1: BusHomingController,
@@ -566,106 +565,89 @@ def run_post_homing_live_control(
     tuning: ControlTuning,
     stop_event: threading.Event,
     live_queue: MpQueue,
-    motor_config: MotorCommandConfig,          
+    motor_config: MotorCommandConfig,
+    did_homing: bool = True     # <-- NEW ARGUMENT
 ):
     first_live_packet_seen = False
     
-    # Grabs the current homed positions (nudge_deg) to ensure a smooth starting point
+    # Grabs the current physical positions
     live_cmd_deg: Dict[int, float] = initialize_live_command_state(rt0, rt1)
     current_speed_limit: float = MAX_LIVE_DEG_PER_S
 
-    print("\n" + "=" * 70)
-    print("🎯 POST-HOMING LIVE CONTROL READY")
-    print("   1. Holding at homed nudge positions for 1 second...")
-    print("   2. Smoothly transitioning to default sitting posture...")
-    print("   3. Zeroing all motors at the sit posture (New 0.0)...")
-    print(f"   4. Waiting for grouped socket targets on {SOCKET_HOST}:{SOCKET_PORT}")
-    print("=" * 70)
+    if did_homing:
+        print("\n" + "=" * 70)
+        print("🎯 POST-HOMING LIVE CONTROL READY")
+        print("   1. Holding at homed nudge positions for 1 second...")
+        print("   2. Smoothly transitioning to default sitting posture...")
+        print("   3. Zeroing all motors at the sit posture (New 0.0)...")
+        print(f"   4. Waiting for grouped socket targets on {SOCKET_HOST}:{SOCKET_PORT}")
+        print("=" * 70)
 
-    # --- PHASE 1: HOLD AT NUDGE FOR 1 SECOND ---
-    hold_start = time.time()
-    while (time.time() - hold_start) < 1.0 and not stop_event.is_set():
-        rt0.refresh_watchdogs(
-            feedback_timeout_s=tuning.feedback_timeout_s,
-            bus_silence_timeout_s=tuning.bus_silence_timeout_s,
-            fault_on_missing_feedback=True,
-        )
-        rt1.refresh_watchdogs(
-            feedback_timeout_s=tuning.feedback_timeout_s,
-            bus_silence_timeout_s=tuning.bus_silence_timeout_s,
-            fault_on_missing_feedback=True,
-        )
-        if rt0.faulted: raise RuntimeError(rt0.get_fault_summary())
-        if rt1.faulted: raise RuntimeError(rt1.get_fault_summary())
+        # --- PHASE 1: HOLD AT NUDGE FOR 1 SECOND ---
+        hold_start = time.time()
+        while (time.time() - hold_start) < 1.0 and not stop_event.is_set():
+            rt0.refresh_watchdogs(tuning.feedback_timeout_s, tuning.bus_silence_timeout_s)
+            rt1.refresh_watchdogs(tuning.feedback_timeout_s, tuning.bus_silence_timeout_s)
+            if rt0.faulted: raise RuntimeError(rt0.get_fault_summary())
+            if rt1.faulted: raise RuntimeError(rt1.get_fault_summary())
 
-        ctrl0.hold_all_once()
-        ctrl1.hold_all_once()
-        time.sleep(tuning.loop_dt)
+            ctrl0.hold_all_once()
+            ctrl1.hold_all_once()
+            time.sleep(tuning.loop_dt)
 
-    # --- PHASE 2: MOVE TO SITTING TARGETS ---
-    print("🛋️  1 second elapsed. Moving to default sitting angles...")
-    
-    arrived_at_sit = False
-    while not arrived_at_sit and not stop_event.is_set():
-        rt0.refresh_watchdogs(
-            feedback_timeout_s=tuning.feedback_timeout_s,
-            bus_silence_timeout_s=tuning.bus_silence_timeout_s,
-            fault_on_missing_feedback=True,
-        )
-        rt1.refresh_watchdogs(
-            feedback_timeout_s=tuning.feedback_timeout_s,
-            bus_silence_timeout_s=tuning.bus_silence_timeout_s,
-            fault_on_missing_feedback=True,
-        )
-        if rt0.faulted: raise RuntimeError(rt0.get_fault_summary())
-        if rt1.faulted: raise RuntimeError(rt1.get_fault_summary())
+        # --- PHASE 2: MOVE TO SITTING TARGETS ---
+        print("🛋️  1 second elapsed. Moving to default sitting angles...")
+        arrived_at_sit = False
+        while not arrived_at_sit and not stop_event.is_set():
+            rt0.refresh_watchdogs(tuning.feedback_timeout_s, tuning.bus_silence_timeout_s)
+            rt1.refresh_watchdogs(tuning.feedback_timeout_s, tuning.bus_silence_timeout_s)
+            if rt0.faulted: raise RuntimeError(rt0.get_fault_summary())
+            if rt1.faulted: raise RuntimeError(rt1.get_fault_summary())
 
-        arrived_at_sit = True
+            arrived_at_sit = True
+            for motor_id in range(1, 13):
+                live_cmd_deg[motor_id] = limit_target_step(
+                    current_cmd_deg=live_cmd_deg[motor_id],
+                    requested_deg=SIT_TARGETS_DEG[motor_id],
+                    max_deg_per_s=MAX_LIVE_DEG_PER_S * motor_config[motor_id]["gear_ratio"],
+                    dt=tuning.loop_dt,
+                )
+                if abs(live_cmd_deg[motor_id] - SIT_TARGETS_DEG[motor_id]) > 0.001:
+                    arrived_at_sit = False
+
+            send_live_targets(rt0, rt1, live_cmd_deg, motor_config)
+            time.sleep(tuning.loop_dt)
+
+        # --- PHASE 3: ZERO ALL MOTORS ---
+        print("🔄 Reached sitting angles. Triggering temporary zero on all motors...")
         for motor_id in range(1, 13):
-            live_cmd_deg[motor_id] = limit_target_step(
-                current_cmd_deg=live_cmd_deg[motor_id],
-                requested_deg=SIT_TARGETS_DEG[motor_id],
-                max_deg_per_s=MAX_LIVE_DEG_PER_S * motor_config[motor_id]["gear_ratio"],
-                dt=tuning.loop_dt,
-            )
-            # If any motor hasn't reached its sit target, we haven't arrived yet
-            if abs(live_cmd_deg[motor_id] - SIT_TARGETS_DEG[motor_id]) > 0.001:
-                arrived_at_sit = False
+            runtime = runtime_for_motor_id(motor_id, rt0, rt1)
+            runtime.zero_motor(motor_id, permanent=False) 
+            live_cmd_deg[motor_id] = 0.0
 
-        send_live_targets(rt0, rt1, live_cmd_deg, motor_config)
-        time.sleep(tuning.loop_dt)
+        # time.sleep(1.0)
+        print("✅ Motors successfully zeroed. Holding sit position and listening for socket data.")
 
-    # --- PHASE 3: ZERO ALL MOTORS ---
-    print("🔄 Reached sitting angles. Triggering temporary zero on all motors...")
-    
-    for motor_id in range(1, 13):
-        runtime = runtime_for_motor_id(motor_id, rt0, rt1)
-        runtime.zero_motor(motor_id, permanent=False) 
-        live_cmd_deg[motor_id] = 0.0
+    else:
+        # --- FAST TRACK (HOMING SKIPPED) ---
+        print("\n" + "=" * 70)
+        print("🎯 POST-HOMING LIVE CONTROL READY (HOMING SKIPPED)")
+        print("   1. Assuming motors are already homed and sitting at 0.0.")
+        print(f"   2. Waiting for grouped socket targets on {SOCKET_HOST}:{SOCKET_PORT}")
+        print("=" * 70)
+        # live_cmd_deg already contains the current physical angles (which should be ~0.0).
+        # We don't zero them, we just let Phase 4 take over and gently hold them at true 0.0.
 
     # Start our live tracking at 0.0 for all motors
     last_live_targets_deg = {i: 0.0 for i in range(1, 13)}
 
     # Dynamically build current_leg_coords from our central SIT_COORDS. 
-    # We cast to list() because tuples are immutable, and Phase 4 needs to add offsets to them.
     current_leg_coords = {leg: list(coords) for leg, coords in SIT_COORDS.items()}
-
-    # Wait for the CAN bus feedback frames to update with the new 0 positions
-    time.sleep(1.0)
-    print("✅ Motors successfully zeroed. Holding sit position and listening for socket data.")
 
     # --- PHASE 4: LIVE SOCKET CONTROL ---
     while not stop_event.is_set():
-        rt0.refresh_watchdogs(
-            feedback_timeout_s=tuning.feedback_timeout_s,
-            bus_silence_timeout_s=tuning.bus_silence_timeout_s,
-            fault_on_missing_feedback=True,
-        )
-        rt1.refresh_watchdogs(
-            feedback_timeout_s=tuning.feedback_timeout_s,
-            bus_silence_timeout_s=tuning.bus_silence_timeout_s,
-            fault_on_missing_feedback=True,
-        )
+        rt0.refresh_watchdogs(tuning.feedback_timeout_s, tuning.bus_silence_timeout_s)
+        rt1.refresh_watchdogs(tuning.feedback_timeout_s, tuning.bus_silence_timeout_s)
         if rt0.faulted: raise RuntimeError(rt0.get_fault_summary())
         if rt1.faulted: raise RuntimeError(rt1.get_fault_summary())
 
@@ -676,23 +658,20 @@ def run_post_homing_live_control(
             
             # Apply dx, dy, dz offsets to the current tracking coordinates
             for leg in LEG_ORDER:
-                current_leg_coords[leg][0] += leg_packet_deltas[leg][0] # X = x + dx
-                current_leg_coords[leg][1] += leg_packet_deltas[leg][1] # Y = y + dy
-                current_leg_coords[leg][2] += leg_packet_deltas[leg][2] # Z = z + dz
+                current_leg_coords[leg][0] += leg_packet_deltas[leg][0]
+                current_leg_coords[leg][1] += leg_packet_deltas[leg][1]
+                current_leg_coords[leg][2] += leg_packet_deltas[leg][2]
             
-            # Pass the UPDATED ABSOLUTE coordinates to the IK converter
             last_live_targets_deg = convert_coords_to_motor_targets(
                 current_leg_coords, motor_config
             )
 
+            print("Raw Motor Targets (deg):", {k: round(v, 2) for k, v in last_live_targets_deg.items()})
+
             current_speed_limit = speed_override if speed_override is not None else MAX_LIVE_DEG_PER_S
 
             if not first_live_packet_seen:
-                print(
-                    f"📡 Socket packet received. "
-                    f"Speed limit: {current_speed_limit:.1f} deg/s. "
-                    "Tracking live targets."
-                )
+                print(f"📡 Socket packet received. Speed limit: {current_speed_limit:.1f} deg/s. Tracking live targets.")
                 first_live_packet_seen = True
 
         for motor_id in range(1, 13):
@@ -705,7 +684,6 @@ def run_post_homing_live_control(
 
         send_live_targets(rt0, rt1, live_cmd_deg, motor_config)
         time.sleep(tuning.loop_dt)
-
 
 def main():
     time.sleep(3)
@@ -915,6 +893,7 @@ def main():
             stop_event=stop_event,
             live_queue=live_queue,
             motor_config=motor_config,
+            did_homing=CALIBRATION_REQUIRED,
         )
 
     except KeyboardInterrupt:
