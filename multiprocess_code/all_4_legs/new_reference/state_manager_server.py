@@ -23,16 +23,16 @@ class QuadrupedStateManager:
         
         # Define Coordinate targets
         self.static_states = {
-            "sit":   {"dx": 0.0, "dy": 0.0, "dz": 0.0},
-            "stand": {"dx": 0.0, "dy": 0.0, "dz": -14.0},
+            "SIT":   {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "STAND": {"dx": 0.0, "dy": 0.0, "dz": -14.0},
         }
 
         self.dynamic_states = {
-            "f":  {"dx": 0.0, "dy": 0.0, "dz": 0.0},
-            "r":  {"dx": 0.0, "dy": 0.0, "dz": 0.0},
-            "b": {"dx": 0.0, "dy": 0.0, "dz": 0.0},
-            "l":    {"dx": 0.0, "dy": 0.0, "dz": 0.0},
-            "climb": {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "FORWARD":  {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "RIGHT":  {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "BACKWARD": {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "LEFT":    {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "JUMP": {"dx": 0.0, "dy": 0.0, "dz": 0.0},
         }
         
         # The Lock ensures only one movement happens at a time
@@ -85,7 +85,7 @@ class QuadrupedStateManager:
             phase += phase_step
 
         
-        target = self.static_states["stand"]
+        target = self.static_states["STAND"]
         payload_deltas = {}
         # Calculate math inside the lock to ensure we use the latest current_positions
         for leg in LEG_ORDER: 
@@ -137,14 +137,16 @@ class QuadrupedStateManager:
             else: 
                 # For dynamic states, we can call a separate function that handles the gait cycle
 
-                if target_state == "f": 
+                if target_state == "FORWARD": 
                     await self._run_trot_gait_cycle(axis='x', direction=1)
-                if target_state == "b":
+                elif target_state == "BACKWARD":
                     await self._run_trot_gait_cycle(axis='x', direction=-1)
-                if target_state == "r": 
+                elif target_state == "RIGHT": 
                     await self._run_trot_gait_cycle(axis='y', direction=1)
-                if target_state == "l": 
+                elif target_state == "LEFT": 
                     await self._run_trot_gait_cycle(axis='y', direction=-1)
+                else:
+                    return {"status": "error", "detail": f"Dynamic state '{target_state}' not implemented."}   
 
                 return {"status": "success", "started": target_state}
 
