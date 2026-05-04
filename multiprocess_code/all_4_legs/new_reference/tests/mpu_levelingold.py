@@ -9,74 +9,76 @@ PURPOSE
 -------
 After every homing + stand transition the chassis can tilt because the homing
 offset shifts slightly each run.  This module reads the MPU-6050 once (averaged)
-after the bot stands up, computes how much each leg Z must change to bring the
-chassis back to horizontal, and sends a corrected XYZ offset payload through
-the existing socket to main_with_ik.py — exactly like state_manager_server.py
-does for the STAND command.
+after the bot stands up, computes how much each leg Y must change to bring the
+chassis back to horizontal, and fires a single corrected XYZ payload through
+the existing socket to main_with_ik.py — exactly like the gait files do.
 
-ROBOT COORDINATE FRAME (your IK convention)
---------------------------------------------
-    X  = forward / backward    (forward = positive)
-    Y  = left / right          (right   = positive)
-    Z  = vertical height       (UP      = positive,  i.e. Z becomes MORE NEGATIVE
-                                          as the leg extends down — standing is dz=-14
-                                          relative to sitting)
+FLOW (call from your gait file)
+---------------------------------
+    leveler = MPULeveler()
 
-    SIT_COORDS  (per leg, from robot_config): e.g. approx (-9.094, ±Y_offset, 0.0)
-    STAND offset sent as payload:  dx=0, dy=0, dz=-14.0
-    → Absolute standing Z  ≈  SIT_COORDS[leg][2] + (-14.0)
+    # ── Startup ──────────────────────────────────────────────────────
+    send_all_to(SITTING_XYZ)
+    leveler.capture_reference()          # <─ call while bot is sitting flat
+    time.sleep(1.5)
 
-    main_with_ik.py applies payload as:
-        absolute[leg] = SIT_COORDS[leg] + payload[leg]   (element-wise)
+    smooth_transition(STANDING_XYZ)      # existing stand transition
+    leveler.level_after_stand()          # <─ one-shot correction after standing
+
+    # ── Optional: re-level after every explicit 'stand' command ──────
+    # Same two lines work inside the 'stand' command branch too.
+
+ROBOT COORDINATE FRAME
+-----------------------
+    X  = lateral shift        (right = positive)
+    Y  = vertical, DOWN +ve   (larger Y = leg more extended downward)
+    Z  = forward
+
+    Sitting  nominal:  (-9.094,  11.0, 3.0)
+    Standing nominal:  (-9.094,  25.0, 3.0)
 
 MPU-6050 MOUNTING ASSUMPTION
 ------------------------------
-    Board is flat on top of chassis, chip facing up.
-    Default axis mapping:
-        FORWARD_AXIS = 0   (MPU ax → robot forward / X direction)
-        LATERAL_AXIS = 1   (MPU ay → robot lateral / Y direction, right +ve)
+    Board is flat on top of chassis, MPU chip facing up.
+    By default this code assumes:
+        FORWARD_AXIS = 0   (MPU ax  → robot forward / Z direction)
+        LATERAL_AXIS = 1   (MPU ay  → robot lateral / X direction, right +ve)
 
-    If corrections act backwards after a physical tilt test, flip the sign:
+    If pitch or roll corrections are backwards after a physical tilt test,
+    flip the corresponding sign constant:
         FORWARD_SIGN = -1   (reverses pitch correction direction)
         LATERAL_SIGN = -1   (reverses roll  correction direction)
 
-    If the board is rotated 90° on the chassis, swap the axis indices:
+    If the board is rotated 90° on the chassis swap the axis indices:
         FORWARD_AXIS = 1
         LATERAL_AXIS = 0
 
 SIGN CONVENTION FOR CORRECTIONS
 ---------------------------------
     delta_pitch > 0  →  front of chassis tilted DOWN
-                        → front legs need MORE Z extension (more negative dz)
-                          to push the front chassis back UP
-                        → rear  legs need LESS  Z extension (less negative dz)
+                        → front legs get MORE Y (extend to push front UP)
+                        → rear  legs get LESS Y
 
     delta_roll  > 0  →  right side tilted DOWN
-                        → right legs need MORE Z extension (more negative dz)
-                        → left  legs need LESS  Z extension
+                        → right legs get MORE Y
+                        → left  legs get LESS Y
 
-    Per-leg dZ correction formula (relative to nominal stand dz = -14.0):
-        FL :  STAND_DZ − dz_pitch + dz_roll      (front, left)
-        FR :  STAND_DZ − dz_pitch − dz_roll      (front, right)
-        BL :  STAND_DZ + dz_pitch + dz_roll      (back,  left)
-        BR :  STAND_DZ + dz_pitch − dz_roll      (back,  right)
-
-    where dz_pitch and dz_roll are POSITIVE magnitudes of extension needed.
-    Subtracting makes dz more negative = leg extends further down = pushes
-    that corner of the chassis UP.
+    Per-leg Y formula:
+        FL :  STANDING_Y + dy_pitch − dy_roll
+        FR :  STANDING_Y + dy_pitch + dy_roll
+        BL :  STANDING_Y − dy_pitch − dy_roll
+        BR :  STANDING_Y − dy_pitch + dy_roll
 
 ROBOT GEOMETRY
 --------------
-    fore_aft distance (front hip to rear hip)  ≈ 42 cm  →  half = 21 cm
-    lateral  distance (left hip to right hip)  ≈ 28 cm  →  half = 14 cm
+    fore_aft distance (front hip to rear hip)  = 42 cm  →  half = 21 cm
+    lateral  distance (left hip to right hip)  = 28 cm  →  half = 14 cm
 
 SOCKET
 ------
-    Sends to HOST:PORT = 127.0.0.1:50000 (same as state_manager_server.py).
-    Payload format  : pickle'd dict
-                      {"fl":[dx,dy,dz], "fr":..., "bl":..., "br":..., "speed": float}
-    The values are OFFSETS from SIT_COORDS — main_with_ik.py adds them on top.
-    Speed used      : LEVEL_SPEED_DEG_PER_S = 120 deg/s  (slow, safe correction)
+    Sends to HOST:PORT = 127.0.0.1:50000 (same as gait files).
+    Payload format  : pickle'd dict  {"fl":[x,y,z], "fr":..., "bl":..., "br":..., "speed": float}
+    Speed used      : TRANSITION_SPEED_DEG_PER_S = 120 deg/s  (slow, safe correction)
 """
 
 import math
@@ -84,14 +86,16 @@ import pickle
 import socket
 import time
 import smbus2
-from config.robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER, MAX_LIVE_DEG_PER_S
 
-# ─── Socket (must match main_with_ik.py / robot_config) ─────────────────────
+
+# ─── Socket (must match main_with_ik.py) ────────────────────────────────────
+from config.robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER
+
 HOST = SOCKET_HOST
 PORT = SOCKET_PORT
 
-# ─── Speed for the leveling correction ───────────────────────────────────────
-LEVEL_SPEED_DEG_PER_S = MAX_LIVE_DEG_PER_S
+# ─── Speed for the leveling correction send ──────────────────────────────────
+LEVEL_SPEED_DEG_PER_S = 120.0     # slow and safe — same as transition speed
 
 # ─── MPU-6050 I²C ────────────────────────────────────────────────────────────
 MPU_I2C_BUS  = 1       # Raspberry Pi default I²C bus
@@ -101,6 +105,7 @@ ACCEL_XOUT_H = 0x3B    # first of 6 bytes: AX_H AX_L AY_H AY_L AZ_H AZ_L
 
 # ─── Axis mapping ─────────────────────────────────────────────────────────────
 # Raw accel tuple index:  0 = ax,  1 = ay,  2 = az
+# Default: board X points toward robot front (robot Z), board Y points robot right (X)
 FORWARD_AXIS = 0    # which raw accel index carries the robot-forward tilt signal
 LATERAL_AXIS = 1    # which raw accel index carries the robot-lateral tilt signal
 FORWARD_SIGN = +1   # flip to -1 if pitch correction acts backwards on real hardware
@@ -110,18 +115,18 @@ LATERAL_SIGN = +1   # flip to -1 if roll  correction acts backwards on real hard
 FORE_AFT_HALF = 42.0 / 2.0    # cm — distance from chassis centre to front/rear hips
 LATERAL_HALF  = 28.0 / 2.0    # cm — distance from chassis centre to left/right hips
 
-# ─── Stand offset (must match state_manager_server.py STAND state) ───────────
-# This is the dz offset that puts the bot in standing position relative to sit.
-# X and Y offsets are 0 — leveling only adjusts Z per leg.
-STAND_DX = 0.0
-STAND_DY = 0.0
-STAND_DZ = -14.0   # negative = leg extends downward in your Z convention
+# ─── Nominal foot targets ─────────────────────────────────────────────────────
+SITTING_XYZ  = [-9.094, 11.0, 3.0]
+STANDING_XYZ = [-9.094, 25.0, 3.0]
 
-# ─── Z safety clamp ──────────────────────────────────────────────────────────
-# These are dz OFFSET limits (relative to SIT_COORDS), not absolute Z values.
-# A correction should never push a leg above sit level or too far below stand.
-DZ_MIN = STAND_DZ - 6.0   # max safe extension beyond nominal stand  → -20.0 cm offset
-DZ_MAX = 0.0               # can't retract past sitting height         →   0.0 cm offset
+STANDING_X = STANDING_XYZ[0]
+STANDING_Y = STANDING_XYZ[1]
+STANDING_Z = STANDING_XYZ[2]
+
+# ─── Y safety clamp ──────────────────────────────────────────────────────────
+# Correction should never push a leg beyond these Y bounds.
+Y_MIN = SITTING_XYZ[1]          # 11.0 cm — can't retract past sitting height
+Y_MAX = STANDING_Y + 6.0        # 31.0 cm — max safe extension beyond nominal stand
 
 # ─── Averaging samples ────────────────────────────────────────────────────────
 N_SAMPLES_REF   = 50    # samples for reference capture (once, while sitting)
@@ -132,21 +137,16 @@ N_SAMPLES_LEVEL = 30    # samples for post-stand leveling read
 class MPULeveler:
     """
     Reads the MPU-6050 accelerometer to compute chassis tilt and send a
-    one-shot corrected foot-position offset payload via socket.
-
-    Your IK: X = forward, Y = lateral, Z = height (more negative = lower).
-    Corrections are computed as per-leg dZ adjustments on top of the nominal
-    STAND_DZ offset, sent as payload offsets that main_with_ik.py applies
-    on top of SIT_COORDS.
+    one-shot corrected foot-position payload via socket.
 
     Usage
     -----
         leveler = MPULeveler()
 
-        # while sitting flat on the ground:
+        # while sitting:
         leveler.capture_reference()
 
-        # after sending the STAND command and waiting for the bot to rise:
+        # after standing:
         leveler.level_after_stand()
     """
 
@@ -204,14 +204,16 @@ class MPULeveler:
         pitch > 0  →  front of chassis tilted DOWN
         roll  > 0  →  right side of chassis tilted DOWN
 
-        Uses the full gravity magnitude for the vertical component so that
-        readings stay stable even with combined pitch + roll.
+        The formula uses the full gravity magnitude for the "vertical"
+        component so that reading stays stable even with combined pitch+roll.
         """
         accel = [ax, ay, az]
 
-        a_forward = FORWARD_SIGN * accel[FORWARD_AXIS]   # gravity along robot forward
-        a_lateral = LATERAL_SIGN * accel[LATERAL_AXIS]   # gravity along robot right
+        # Apply axis mapping and sign
+        a_forward = FORWARD_SIGN * accel[FORWARD_AXIS]   # gravity component along robot forward
+        a_lateral = LATERAL_SIGN * accel[LATERAL_AXIS]   # gravity component along robot right
 
+        # Vertical component = magnitude of gravity minus the two horizontal projections
         g_sq      = ax**2 + ay**2 + az**2
         a_vert_sq = max(g_sq - a_forward**2 - a_lateral**2, 0.0)
         a_vert    = math.sqrt(a_vert_sq)
@@ -222,12 +224,12 @@ class MPULeveler:
 
     # ── Socket send ───────────────────────────────────────────────────────────
 
-    def _send_payload(self, payload: dict):
+    def _send_targets(self, targets: dict):
         """
-        Send the corrected XYZ offset payload through the socket.
-        Format must match what main_with_ik.py expects:
-            pickle'd dict  {"fl":[dx,dy,dz], "fr":..., "bl":..., "br":..., "speed": float}
+        Send the corrected XYZ foot targets through the socket.
+        Identical pickle format to sidd_gait.py / trot_gait_node_sid.py.
         """
+        payload = dict(targets)
         payload["speed"] = LEVEL_SPEED_DEG_PER_S
         data = pickle.dumps(payload)
         try:
@@ -246,12 +248,12 @@ class MPULeveler:
         (chassis guaranteed horizontal by physical contact with the ground).
 
         Records the MPU tilt at this known-flat state so that post-stand tilt
-        is computed as a delta, removing any MPU mounting offset error.
+        is computed as a delta from here, removing any MPU mounting offset.
         """
         print("[MPU] Capturing reference — keep bot sitting flat...")
-        ax, ay, az = self._read_averaged(N_SAMPLES_REF)
+        ax, ay, az          = self._read_averaged(N_SAMPLES_REF)
         self._ref_pitch, self._ref_roll = self._accel_to_tilt(ax, ay, az)
-        self._ref_captured = True
+        self._ref_captured  = True
         print(f"[MPU] Reference locked — "
               f"pitch_ref={self._ref_pitch:+.3f}°  roll_ref={self._ref_roll:+.3f}°")
 
@@ -260,8 +262,9 @@ class MPULeveler:
         Perform n consecutive raw reads and return True only if every read
         succeeds with plausible values.
 
-        Use as a startup gate to confirm the MPU is alive on I²C before
-        relying on it for live corrections.
+        Used as a startup gate: confirms the MPU is alive on I²C, returning
+        sensible (non-zero, in-range) data before the rest of the system
+        relies on it for live correction.
         """
         print(f"[MPU] Health check — performing {n} consecutive reads...")
         failures = 0
@@ -288,21 +291,19 @@ class MPULeveler:
     def compute_level_targets(self, n_samples: int = N_SAMPLES_LEVEL,
                               verbose: bool = True) -> dict:
         """
-        Read current chassis tilt, compute per-leg dZ corrections and return
-        a payload dict of offsets (from SIT_COORDS) ready to send to main_with_ik.py.
+        Read current chassis tilt, compute per-leg Y corrections and return
+        the four corrected foot targets.
 
         Args
         ----
-        n_samples : how many MPU samples to average for this read.
-        verbose   : print per-call diagnostics.
+        n_samples : how many MPU samples to average for this read. Lower values
+                    speed up the call for use in a live correction loop.
+        verbose   : suppress per-call printout when running from a tight loop.
 
         Returns
         -------
-        dict  {"fl": [dx, dy, dz],  "fr": [dx, dy, dz],
-               "bl": [dx, dy, dz],  "br": [dx, dy, dz]}
-
-        dx and dy are always 0.0 — leveling only adjusts dz per leg.
-        dz values are offsets from SIT_COORDS (same convention as STAND_DZ).
+        dict  {"fl": [x, y, z],  "fr": [x, y, z],
+               "bl": [x, y, z],  "br": [x, y, z]}
 
         Raises
         ------
@@ -314,66 +315,34 @@ class MPULeveler:
             )
 
         # ── Read current tilt ─────────────────────────────────────────────────
-        ax, ay, az  = self._read_averaged(n_samples)
-        pitch, roll = self._accel_to_tilt(ax, ay, az)
+        ax, ay, az    = self._read_averaged(n_samples)
+        pitch, roll   = self._accel_to_tilt(ax, ay, az)
 
-        delta_pitch = pitch - self._ref_pitch   # + → front tilted down
-        delta_roll  = roll  - self._ref_roll  
-        
-        PITCH_DEADZONE_DEG = 0.5   # tune this on your hardware
-        ROLL_DEADZONE_DEG  = 0.5
+        delta_pitch   = pitch - self._ref_pitch   # + → front tilted down
+        delta_roll    = roll  - self._ref_roll    # + → right side tilted down
 
-        if abs(delta_pitch) < PITCH_DEADZONE_DEG:
-            print(f"[MPU] Pitch {delta_pitch:+.3f}° within deadzone — no correction.")
-            delta_pitch = 0.0
+        # ── Convert angle to cm height difference at each hip ─────────────────
+        # tan(angle) × half-distance = how much higher/lower that side needs to move
+        dy_pitch = math.tan(math.radians(delta_pitch)) * FORE_AFT_HALF
+        dy_roll  = math.tan(math.radians(delta_roll))  * LATERAL_HALF
 
-        if abs(delta_roll) < ROLL_DEADZONE_DEG:
-            print(f"[MPU] Roll {delta_roll:+.3f}° within deadzone — no correction.")
-            delta_roll = 0.0
-
-        # early exit — if both are zero, just send the flat STAND payload
-        if delta_pitch == 0.0 and delta_roll == 0.0:
-            print("[MPU] Chassis within deadzone — sending nominal STAND targets.")
-            return {
-                leg: [STAND_DX, STAND_DY, STAND_DZ]
-                for leg in ("fl", "fr", "bl", "br")
-            }  # + → right side tilted down
-
-        # ── Convert tilt angle to cm of Z correction at each hip ──────────────
-        # tan(angle) × half-distance = how much that side needs to move vertically.
-        # These are POSITIVE magnitudes — the sign is applied per leg below.
-        dz_pitch = math.tan(math.radians(delta_pitch)) * FORE_AFT_HALF
-        dz_roll  = math.tan(math.radians(delta_roll))  * LATERAL_HALF
-
-        # ── Build per-leg dZ offsets ───────────────────────────────────────────
-        # In your Z convention, more negative dz = leg extends further down =
-        # that corner of the chassis gets pushed UP.
-        #
-        # Front tilted down (delta_pitch > 0):
-        #   → front legs must extend more  → subtract dz_pitch from STAND_DZ
-        #   → rear  legs must extend less  → add    dz_pitch to   STAND_DZ
-        #
-        # Right side tilted down (delta_roll > 0):
-        #   → right legs must extend more  → subtract dz_roll from STAND_DZ
-        #   → left  legs must extend less  → add    dz_roll to   STAND_DZ
-        #
-        #   FL (front, left) :  STAND_DZ − dz_pitch + dz_roll
-        #   FR (front, right):  STAND_DZ − dz_pitch − dz_roll
-        #   BL (back,  left) :  STAND_DZ + dz_pitch + dz_roll
-        #   BR (back,  right):  STAND_DZ + dz_pitch − dz_roll
-        raw_dz = {
-            "fl": STAND_DZ - dz_pitch + dz_roll,
-            "fr": STAND_DZ - dz_pitch - dz_roll,
-            "bl": STAND_DZ + dz_pitch + dz_roll,
-            "br": STAND_DZ + dz_pitch - dz_roll,
+        # ── Build per-leg Y targets ────────────────────────────────────────────
+        #   Front legs: +dy_pitch  (more extension pushes front chassis UP)
+        #   Rear  legs: -dy_pitch
+        #   Right legs: +dy_roll   (more extension pushes right chassis UP)
+        #   Left  legs: -dy_roll
+        raw = {
+            "fl": STANDING_Y + dy_pitch - dy_roll,
+            "fr": STANDING_Y + dy_pitch + dy_roll,
+            "bl": STANDING_Y - dy_pitch - dy_roll,
+            "br": STANDING_Y - dy_pitch + dy_roll,
         }
 
         # ── Safety clamp ──────────────────────────────────────────────────────
-        clamped_dz = {leg: max(DZ_MIN, min(DZ_MAX, dz)) for leg, dz in raw_dz.items()}
+        clamped = {leg: max(Y_MIN, min(Y_MAX, y)) for leg, y in raw.items()}
 
-        # ── Build final payload (dx=0, dy=0, dz=corrected per leg) ───────────
-        payload = {
-            leg: [STAND_DX, STAND_DY, clamped_dz[leg]]
+        targets = {
+            leg: [STANDING_X, clamped[leg], STANDING_Z]
             for leg in ("fl", "fr", "bl", "br")
         }
 
@@ -382,64 +351,65 @@ class MPULeveler:
             print(f"\n[MPU] Tilt — "
                   f"pitch: {delta_pitch:+.3f}°   roll: {delta_roll:+.3f}°")
             print(f"[MPU] Height deltas — "
-                  f"dz_pitch: {dz_pitch:+.4f} cm   dz_roll: {dz_roll:+.4f} cm")
-            print(f"  {'Leg':<4}  {'dZ offset':>10}  {'Δ from stand':>14}  {'Clamped?':>8}")
+                  f"dy_pitch: {dy_pitch:+.4f} cm   dy_roll: {dy_roll:+.4f} cm")
+            print(f"  {'Leg':<4}  {'Y target':>10}  {'Δ from nominal':>16}  {'Clamped?':>8}")
             print("  " + "─" * 44)
             for leg in ("fl", "fr", "bl", "br"):
-                dz      = clamped_dz[leg]
-                dz_raw  = raw_dz[leg]
-                delta   = dz - STAND_DZ
-                clamp_note = " ← CLAMPED" if abs(dz - dz_raw) > 1e-6 else ""
-                print(f"  {leg.upper():<4}  {dz:>10.4f}  {delta:>+14.4f}{clamp_note}")
+                y_target = clamped[leg]
+                y_raw    = raw[leg]
+                delta    = y_target - STANDING_Y
+                clamp_note = " ← CLAMPED" if abs(y_target - y_raw) > 1e-6 else ""
+                print(f"  {leg.upper():<4}  {y_target:>10.4f}  {delta:>+16.4f}{clamp_note}")
             print()
 
-        return payload
+        return targets
 
     def level_after_stand(self):
         """
-        One-shot leveling call — run this immediately after every STAND transition.
+        One-shot leveling call — run this immediately after every stand transition.
 
         Internally:
           1. Reads MPU (averaged over N_SAMPLES_LEVEL readings)
           2. Computes delta pitch and roll vs the sitting reference
-          3. Derives per-leg dZ correction offset (keeping dx, dy at stand values)
+          3. Derives per-leg Y correction
           4. Sends the corrected payload once via socket to main_with_ik.py
         """
         print("[MPU] Computing post-stand level correction...")
-        payload = self.compute_level_targets()
-        self._send_payload(payload)
+        targets = self.compute_level_targets()
+        self._send_targets(targets)
         print("[MPU] Level correction sent — one packet dispatched.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Integration guide
+# Integration guide (add these lines to your gait file)
 # ─────────────────────────────────────────────────────────────────────────────
 #
 #   from mpu_leveling import MPULeveler
 #
-#   leveler = MPULeveler()           # ← once, at startup
+#   leveler = MPULeveler()           # ← once, at module level
 #
-#   # After homing, while bot is sitting flat on the ground:
-#   leveler.capture_reference()
+#   # Inside main(), after send_all_to(SITTING_XYZ):
+#   leveler.capture_reference()      # chassis flat on ground → lock reference
+#   time.sleep(1.5)
 #
-#   # After your STAND command completes (state_manager sends dz=-14):
-#   time.sleep(2.0)                  # wait for physical stand transition
-#   leveler.level_after_stand()      # read MPU, compute per-leg dZ, send once
+#   # After smooth_transition(STANDING_XYZ):
+#   leveler.level_after_stand()      # read MPU, correct, send once
 #
-#   # Inside the 'stand' command branch — same two lines work every time.
+#   # Inside the 'stand' command branch (after smooth_transition):
+#   leveler.level_after_stand()      # same call — works every time
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # Axis troubleshooting
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 1 — run standalone:  python3 mpu_leveling.py
-#           Tilt the bot forward. Check that delta_pitch is positive.
-#           If negative, set FORWARD_SIGN = -1.
-#           Tilt right. Check that delta_roll is positive.
-#           If negative, set LATERAL_SIGN = -1.
+#           This prints raw tilt values. Physically tilt the bot forward and
+#           check that delta_pitch becomes positive. If it goes negative,
+#           set FORWARD_SIGN = -1 at the top of this file.
+#           Tilt right and check delta_roll is positive. Flip LATERAL_SIGN
+#           if not.
 #
-# Step 2 — if corrections are on the wrong axis entirely
-#           (e.g. rolling triggers a pitch correction), swap FORWARD_AXIS and
-#           LATERAL_AXIS.
+# Step 2 — if corrections are on the wrong axis entirely (pitch is responding
+#           to a lateral tilt), swap FORWARD_AXIS and LATERAL_AXIS.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -449,8 +419,7 @@ if __name__ == "__main__":
 
     print("=" * 60)
     print("  MPU-6050 Leveling — Axis Verification Mode")
-    print("  X=forward  Y=lateral  Z=height (negative=down)")
-    print("  Keep the bot sitting flat, then tilt manually")
+    print("  Keep the bot sitting flat, then tilt it manually")
     print("  to verify pitch/roll sign conventions.")
     print("  Ctrl+C to exit.")
     print("=" * 60)
@@ -466,7 +435,7 @@ if __name__ == "__main__":
     leveler.capture_reference()
 
     print("\n[Step 2] Live tilt readout — tilt the bot to verify signs:")
-    print(f"  {'pitch':>10}  {'roll':>10}  {'dz_pitch':>12}  {'dz_roll':>12}")
+    print(f"  {'pitch':>10}  {'roll':>10}  {'dy_pitch':>12}  {'dy_roll':>12}")
     print("  " + "─" * 50)
 
     try:
@@ -475,9 +444,9 @@ if __name__ == "__main__":
             pitch, roll = leveler._accel_to_tilt(ax, ay, az)
             dp = pitch - leveler._ref_pitch
             dr = roll  - leveler._ref_roll
-            dz_p = math.tan(math.radians(dp)) * FORE_AFT_HALF
-            dz_r = math.tan(math.radians(dr)) * LATERAL_HALF
-            print(f"  {dp:>+10.3f}°  {dr:>+10.3f}°  {dz_p:>+12.4f}cm  {dz_r:>+12.4f}cm",
+            dy_p = math.tan(math.radians(dp)) * FORE_AFT_HALF
+            dy_r = math.tan(math.radians(dr)) * LATERAL_HALF
+            print(f"  {dp:>+10.3f}°  {dr:>+10.3f}°  {dy_p:>+12.4f}cm  {dy_r:>+12.4f}cm",
                   end="\r", flush=True)
             time.sleep(0.1)
     except KeyboardInterrupt:

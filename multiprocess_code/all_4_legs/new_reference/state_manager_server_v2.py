@@ -7,6 +7,8 @@ from config.robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER, MAX_LIVE_DE
 from lib.trot_gait import TrotGaitController
 import time
 import copy
+from mpu_leveling import MPULeveler
+
 
 # --- Data Models ---
 
@@ -39,6 +41,9 @@ class QuadrupedStateManager:
         # The Lock ensures only one movement happens at a time
         self.lock = asyncio.Lock()
 
+        # MPU leveler — reference is captured on SIT, correction applied on STAND
+        self.leveler = MPULeveler()
+
     # ─────────────────────────────────────────────────────────────────────────────
     # CORE TROT GAIT RUNNER
     # ─────────────────────────────────────────────────────────────────────────────
@@ -46,12 +51,6 @@ class QuadrupedStateManager:
         """ 
         Always completes a full cycle before stopping — all feet land cleanly.
         """
-        # UPDATE_HZ      = 100.0   # Hz  — send rate
-        # GAIT_FREQUENCY = 2.0     # Hz  — full cycle rate
-        # dt          = 1.0 / UPDATE_HZ
-        # phase_step  = GAIT_FREQUENCY / UPDATE_HZ
-        # phase       = 0.0 
-
         GAIT_SPEED_DEG_PER_S = 500.0
         time = 0.4
         dt = 0.01
@@ -75,22 +74,19 @@ class QuadrupedStateManager:
                 self.current_positions[leg][1] += dy
                 self.current_positions[leg][2] += dz
 
-                # 4. Send the true delta directly to the physical robot
+                # Send the true delta directly to the physical robot
                 payload_deltas[leg] = self.current_positions[leg]
 
             # Send the command to the physical robot hardware
             success = await self._send_to_robot_async(payload_deltas, speed=GAIT_SPEED_DEG_PER_S)
             print("\n")
-            # time.sleep(dt)
             await asyncio.sleep(dt)
             phase += phase_step
 
-        
         target = self.static_states["STAND"]
         payload_deltas = {}
         # Calculate math inside the lock to ensure we use the latest current_positions
         for leg in LEG_ORDER: 
-            
             payload_deltas[leg] = [target["dx"], target["dy"], target["dz"]]
             self.current_positions[leg] = payload_deltas[leg]
 
@@ -102,12 +98,13 @@ class QuadrupedStateManager:
     async def change_state(self, target_state: str, sender: str, cycles: int = 1):
         """API-like function to trigger a state transition with concurrency protection."""
         
-        # 1. IMMEDIATE CHECK: If the robot is already moving, don't queue. Reject.
+        # IMMEDIATE CHECK: If the robot is already moving, don't queue. Reject.
         if self.lock.locked():
             raise HTTPException(
                 status_code=429, 
                 detail=f"Robot is busy. Request from {sender} rejected."
             )
+
         target_state = target_state.upper()
         async with self.lock:
             if target_state not in self.static_states and target_state not in self.dynamic_states:
@@ -119,7 +116,6 @@ class QuadrupedStateManager:
                 
                 # Calculate math inside the lock to ensure we use the latest current_positions
                 for leg in LEG_ORDER: 
-                    
                     payload_deltas[leg] = [target["dx"], target["dy"], target["dz"]]
                     self.current_positions[leg] = payload_deltas[leg]
 
@@ -129,24 +125,38 @@ class QuadrupedStateManager:
                 if not success:
                     raise HTTPException(status_code=503, detail="Robot hardware communication failed.")
 
-                # 2. SIMULATE MOVEMENT TIME: 
-                # We hold the lock for 2 seconds so no other state can be triggered 
-                # while the legs are physically moving.
+                # Hold the lock while the legs are physically moving
                 await asyncio.sleep(2.0)
+
+                # ── SIT: capture the flat reference for the next STAND ────────
+                if target_state == "SIT":
+                    print("[State] Bot is sitting — capturing MPU reference plane...")
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, self.leveler.capture_reference
+                    )
+                    print("[State] MPU reference captured.")
+
+                # ── STAND: correct tilt against the captured SIT reference ────
+                elif target_state == "STAND":
+                    print("[State] Bot is standing — applying MPU level correction...")
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, self.leveler.level_after_stand
+                    )
+                    print("[State] MPU level correction complete.")
                 
                 return {"status": "success", "reached": target_state}
-            else: 
-                # For dynamic states, we can call a separate function that handles the gait cycle
 
+            else: 
+                # For dynamic states, call the trot gait cycle handler
                 while cycles > 0:
                     if target_state == "FORWARD":  
-                            await self._run_trot_gait_cycle(axis='x', direction=1)
+                        await self._run_trot_gait_cycle(axis='x', direction=1)
                     elif target_state == "BACKWARD": 
-                            await self._run_trot_gait_cycle(axis='x', direction=-1) 
+                        await self._run_trot_gait_cycle(axis='x', direction=-1) 
                     elif target_state == "RIGHT":  
-                            await self._run_trot_gait_cycle(axis='y', direction=1) 
+                        await self._run_trot_gait_cycle(axis='y', direction=1) 
                     elif target_state == "LEFT":  
-                            await self._run_trot_gait_cycle(axis='y', direction=-1) 
+                        await self._run_trot_gait_cycle(axis='y', direction=-1) 
                     else:
                         return {"status": "error", "detail": f"Dynamic state '{target_state}' not implemented."}   
                     cycles -= 1

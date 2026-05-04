@@ -9,7 +9,8 @@ def send_command(target_state: str, sender: str = "cli_tester"):
     """Sends a POST request to the quadruped API."""
     payload = {
         "new_state": target_state,
-        "sender_id": sender
+        "sender_id": sender,
+        "cycles": 1
     }
     
     print(f"\n📡 Sending '{target_state}' command to robot...")

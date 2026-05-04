@@ -9,8 +9,8 @@ from config.robot_config import LEG_ORDER
 # ─────────────────────────────────────────────────────────────────────────────
 STRIDE_LENGTH_X  = 10.0     # cm  — S,  total fore-aft foot travel per cycle
 STRIDE_LENGTH_Y  = 4.0     # cm  — lateral stride for strafe
-GAIT_SPEED_DEG_PER_S = 800.0   # deg/s — used during gait frames
-LIFT_HEIGHT = 7.0                  # max lift during swing
+GAIT_SPEED_DEG_PER_S = 400.0   # deg/s — used during gait frames
+LIFT_HEIGHT = 4.0                  # max lift during swing
 PUSH_DEPTH = 1.0                   # max push down during stance
 
 # ─────────────────────────────────────────────────────────────────────────────
