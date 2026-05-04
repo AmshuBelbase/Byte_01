@@ -28,7 +28,7 @@ SIT_COORDS = {
 
 SIT_TARGETS_DEG = {
     1: -85.0,  2: 114.0, 3: -9.0,    # fl - flipped and gear ratio applied
-    4: -85.0,  5: 114.0, 6: -3.0,    # bl - flipped and gear ratio applied
+    4: -90.0,  5: 114.0, 6: -3.0,    # bl - flipped and gear ratio applied
     7: 85.0,  8: -114.0, 9: 6.0,    # fr
-    10: 85.0, 11: -116.0, 12: 9.0   # br
+    10: 90.0, 11: -116.0, 12: 9.0   # br
 }

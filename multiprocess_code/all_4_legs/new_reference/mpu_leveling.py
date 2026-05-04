@@ -113,7 +113,7 @@ LATERAL_HALF  = 28.0 / 2.0    # cm — distance from chassis centre to left/righ
 # ─── Stand offset (must match state_manager_server.py STAND state) ───────────
 # This is the dz offset that puts the bot in standing position relative to sit.
 # X and Y offsets are 0 — leveling only adjusts Z per leg.
-STAND_DX = 0.0
+STAND_DX = 4.0
 STAND_DY = 0.0
 STAND_DZ = -14.0   # negative = leg extends downward in your Z convention
 

@@ -10,7 +10,7 @@ def send_command(target_state: str, sender: str = "cli_tester"):
     payload = {
         "new_state": target_state,
         "sender_id": sender,
-        "cycles": 1
+        "cycles": 7
     }
     
     print(f"\n📡 Sending '{target_state}' command to robot...")
