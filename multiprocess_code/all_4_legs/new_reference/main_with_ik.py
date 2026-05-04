@@ -649,14 +649,15 @@ def run_post_homing_live_control(
         # Check for new socket commands
         item = drain_latest_packet(live_queue)
         if item is not None:
-            leg_packet_deltas, speed_override = item
+            leg_packet, speed_override = item
             
             # Apply dx, dy, dz offsets to the current tracking coordinates
             for leg in LEG_ORDER:
-                current_leg_coords[leg][0] += leg_packet_deltas[leg][0]
-                current_leg_coords[leg][1] += leg_packet_deltas[leg][1]
-                current_leg_coords[leg][2] += leg_packet_deltas[leg][2]
-            
+                current_leg_coords[leg][0] = SIT_COORDS[leg][0] + leg_packet[leg][0]
+                current_leg_coords[leg][1] = SIT_COORDS[leg][1] + leg_packet[leg][1]
+                current_leg_coords[leg][2] = SIT_COORDS[leg][2] + leg_packet[leg][2]
+
+            print("New Targets: ", {leg: [round(c, 2) for c in coords] for leg, coords in current_leg_coords.items()})
             last_live_targets_deg = convert_coords_to_motor_targets(
                 current_leg_coords, motor_config
             )

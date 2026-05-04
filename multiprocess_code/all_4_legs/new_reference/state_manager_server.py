@@ -28,7 +28,10 @@ class QuadrupedStateManager:
         }
 
         self.dynamic_states = {
-            "walk":  {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "f":  {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "r":  {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "b": {"dx": 0.0, "dy": 0.0, "dz": 0.0},
+            "l":    {"dx": 0.0, "dy": 0.0, "dz": 0.0},
             "climb": {"dx": 0.0, "dy": 0.0, "dz": 0.0},
         }
         
@@ -54,39 +57,25 @@ class QuadrupedStateManager:
         no_of_updates = int(time / dt)
         phase_step = 1.0 / no_of_updates
         phase = 0.0
-
-        # 1. CREATE A DEEP COPY (Safe from the shallow copy trap)
-        positions_before_trot = copy.deepcopy(self.current_positions)
         
         # create a controller instance for each leg and calculate foot positions
         controller = {}  # reset controller dict each loop to ensure clean state
         for leg in LEG_ORDER:
             controller[leg] = TrotGaitController(leg, axis, direction)
 
-        last_curve_pos = {leg: controller[leg]._foot_pos_phase(0.0) for leg in LEG_ORDER}
-
         while phase < 1.0: 
             payload_deltas = {}
 
             for leg in LEG_ORDER: 
                 # 1. Get the ABSOLUTE position on the gait curve for this exact tick
-                curve_x, curve_y, curve_z = controller[leg]._foot_pos_phase(phase)
-                
-                # 2. Convert absolute curve position into a RELATIVE delta for the main script
-                dx = curve_x - last_curve_pos[leg][0]
-                dy = curve_y - last_curve_pos[leg][1]
-                dz = curve_z - last_curve_pos[leg][2]
+                dx, dy, dz = controller[leg]._foot_pos_phase(phase)  
 
-                # 3. Update the curve tracker for the next loop
-                last_curve_pos[leg] = [curve_x, curve_y, curve_z]
-
-                # 4. Send the true delta directly to the physical robot
-                payload_deltas[leg] = [dx, dy, dz]
-
-                # 5. Update the API's GLOBAL tracker by adding the delta
                 self.current_positions[leg][0] += dx
                 self.current_positions[leg][1] += dy
-                self.current_positions[leg][2] += dz 
+                self.current_positions[leg][2] += dz
+
+                # 4. Send the true delta directly to the physical robot
+                payload_deltas[leg] = self.current_positions[leg]
 
             # Send the command to the physical robot hardware
             success = await self._send_to_robot_async(payload_deltas, speed=GAIT_SPEED_DEG_PER_S)
@@ -95,33 +84,18 @@ class QuadrupedStateManager:
             await asyncio.sleep(dt)
             phase += phase_step
 
-        # 2. CALCULATE AND SEND THE PHYSICAL HARDWARE SNAP (From the previous fix)
-        snap_deltas = {}
-        for leg in LEG_ORDER:
-            err_x = positions_before_trot[leg][0] - self.current_positions[leg][0]
-            err_y = positions_before_trot[leg][1] - self.current_positions[leg][1]
-            err_z = positions_before_trot[leg][2] - self.current_positions[leg][2]
-            snap_deltas[leg] = [err_x, err_y, err_z]
+        
+        target = self.static_states["stand"]
+        payload_deltas = {}
+        # Calculate math inside the lock to ensure we use the latest current_positions
+        for leg in LEG_ORDER: 
             
-        await self._send_to_robot_async(snap_deltas)
-        
-        # 3. RESET THE SOFTWARE TRACKER
-        self.current_positions = copy.deepcopy(positions_before_trot)
-        
-        # 2. CALCULATE AND SEND THE PHYSICAL HARDWARE SNAP
-        # snap_deltas = {}
-        # for leg in LEG_ORDER:
-        #     err_x = positions_before_trot[leg][0] - self.current_positions[leg][0]
-        #     err_y = positions_before_trot[leg][1] - self.current_positions[leg][1]
-        #     err_z = positions_before_trot[leg][2] - self.current_positions[leg][2]
-        #     snap_deltas[leg] = [err_x, err_y, err_z]
-            
-        # print(f"\n📐 Trot cycle complete. Sending snap correction to robot.. {snap_deltas}")
-        # await self._send_to_robot_async(snap_deltas)
-        
-        # # 3. RESET THE SOFTWARE TRACKER (Your original idea)
-        # self.current_positions = copy.deepcopy(positions_before_trot)
-        
+            payload_deltas[leg] = [target["dx"], target["dy"], target["dz"]]
+            self.current_positions[leg] = payload_deltas[leg]
+
+        # Send the command to the physical robot hardware
+        success = await self._send_to_robot_async(payload_deltas)
+
         phase = 0.0
 
     async def change_state(self, target_state: str, sender: str):
@@ -143,17 +117,10 @@ class QuadrupedStateManager:
                 payload_deltas = {}
                 
                 # Calculate math inside the lock to ensure we use the latest current_positions
-                for leg in LEG_ORDER:
-                    curr_x, curr_y, curr_z = self.current_positions[leg]
+                for leg in LEG_ORDER: 
                     
-                    dx = target["dx"] - curr_x
-                    dy = target["dy"] - curr_y
-                    dz = target["dz"] - curr_z
-                    
-                    payload_deltas[leg] = [dx, dy, dz]
-                    
-                    # Update internal tracker immediately
-                    self.current_positions[leg] = [target["dx"], target["dy"], target["dz"]]
+                    payload_deltas[leg] = [target["dx"], target["dy"], target["dz"]]
+                    self.current_positions[leg] = payload_deltas[leg]
 
                 # Send the command to the physical robot hardware
                 success = await self._send_to_robot_async(payload_deltas)
@@ -167,11 +134,18 @@ class QuadrupedStateManager:
                 await asyncio.sleep(2.0)
                 
                 return {"status": "success", "reached": target_state}
-            else:
-                if target_state == "walk":
-                    # For dynamic states, we can call a separate function that handles the gait cycle
+            else: 
+                # For dynamic states, we can call a separate function that handles the gait cycle
+
+                if target_state == "f": 
+                    await self._run_trot_gait_cycle(axis='x', direction=1)
+                if target_state == "b":
+                    await self._run_trot_gait_cycle(axis='x', direction=-1)
+                if target_state == "r": 
                     await self._run_trot_gait_cycle(axis='y', direction=1)
-                
+                if target_state == "l": 
+                    await self._run_trot_gait_cycle(axis='y', direction=-1)
+
                 return {"status": "success", "started": target_state}
 
     # def _send_to_robot(self, payload: dict):

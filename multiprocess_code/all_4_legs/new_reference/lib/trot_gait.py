@@ -123,7 +123,7 @@ class TrotGaitController:
 
         dx, dy, dz = npx - self.last_pos[0], npy - self.last_pos[1], npz - self.last_pos[2]
 
-        print(f" Leg {self.leg} {swing_stance}  | Phase: {phase:.2f} | x, y, z: {[self.x_com, self.z_com]} | TRANSFORMED x,y,z: {[dx, dy, dz]} ")
+        # print(f" Leg {self.leg} {swing_stance}  | Phase: {phase:.2f} | x, y, z: {[self.x_com, self.z_com]} | TRANSFORMED x,y,z: {[dx, dy, dz]} ")
         self.last_pos = [npx, npy, npz]  # Update last position for smooth transitions
         return [dx, dy, dz]
 
