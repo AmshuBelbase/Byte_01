@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from lib.can_runtime import BusRuntime
 from lib.homing_controller import BusHomingController, ControlTuning, HomingMotorConfig
 from lib.inverse_kinematics import calculate_each_motor_angles
-from config.robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER, SIT_COORDS, SIT_TARGETS_DEG
+from config.robot_config import SOCKET_HOST, SOCKET_PORT, LEG_ORDER, SIT_COORDS, SIT_TARGETS_DEG, MAX_LIVE_DEG_PER_S
 
 LIVE_QUEUE_MAXSIZE = 1
 MOTOR_CONFIG_PATH = "config/motor_config.json"
@@ -32,17 +32,12 @@ LEG_TO_MOTOR_IDS: Dict[str, List[int]] = {
     "br": [10, 11, 12],
 }
 
-# Default safety speed limit — used when the sender does NOT include a "speed" key.
-# tapping_gait.py sends "speed": 900.0 to override this for fast tap movements.
-# test_sender.py and any other client that omits "speed" will use this value.
-MAX_LIVE_DEG_PER_S = 120
 
-
-CURRENT_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/logs/motor_currents.csv"
+CURRENT_LOG_PATH = "logs/motor_currents.csv"
 CURRENT_LOG_HZ = 5.0
 CURRENT_LOG_DT = 1.0 / CURRENT_LOG_HZ
 
-TEMP_LOG_PATH = "/home/byte/ak60_motor_control/multiprocess_code/all_4_legs/cur_test/logs/motor_temps.csv"
+TEMP_LOG_PATH = "logs/motor_temps.csv"
 TEMP_LOG_HZ = 5.0
 TEMP_LOG_DT = 1.0 / TEMP_LOG_HZ
 
@@ -897,7 +892,7 @@ def main():
         )
 
     except KeyboardInterrupt:
-        print("\n🛑 Ctrl+C — stopping...")
+        print("\n🛑 Ctrl+C — stopping...") 
         stop_event.set()
         final_hold_takeover.set()
     except Exception as exc:

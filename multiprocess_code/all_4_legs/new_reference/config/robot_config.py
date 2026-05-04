@@ -1,5 +1,11 @@
 # robot_config.py
 
+
+# Default safety speed limit — used when the sender does NOT include a "speed" key.
+# tapping_gait.py sends "speed": 900.0 to override this for fast tap movements.
+# test_sender.py and any other client that omits "speed" will use this value.
+MAX_LIVE_DEG_PER_S = 120
+
 # ─── Network Settings ────────────────────────────────────────────────────────
 SOCKET_HOST = "10.176.243.34" #127.0.0.1
 SOCKET_PORT = 50000
